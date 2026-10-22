@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'backup_service.dart';
 import 'l10n.dart';
+import 'src/theme.dart';
 
 // ─── Ecran backup & restaurare ────────────────────────────────────────────────
 class BackupScreen extends StatefulWidget {
@@ -18,8 +19,6 @@ class BackupScreen extends StatefulWidget {
 }
 
 class _BackupScreenState extends State<BackupScreen> {
-  static const _teal = Color(0xFF0F766E);
-
   BackupStatus _status = const BackupStatus();
   bool _busy = false;
   String? _message;
@@ -300,8 +299,6 @@ class _BackupScreenState extends State<BackupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(tr('Backup & restaurare', 'Backup & restore')),
-        backgroundColor: _teal,
-        foregroundColor: Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -331,7 +328,7 @@ class _BackupScreenState extends State<BackupScreen> {
             child: ListTile(
               leading: Icon(
                 folderOk ? Icons.folder : Icons.folder_off_outlined,
-                color: folderOk ? _teal : Colors.orange.shade800,
+                color: folderOk ? Theme.of(context).colorScheme.primary : Colors.orange.shade800,
               ),
               title: Text(!s.hasFolder
                   ? tr('Niciun folder ales', 'No folder chosen')
@@ -368,18 +365,18 @@ class _BackupScreenState extends State<BackupScreen> {
                     : tr('Niciun backup automat încă', 'No automatic backup yet')),
                 subtitle: s.lastAutoError != null
                     ? Text(tr('Ultima încercare a eșuat: ${s.lastAutoError}', 'The last attempt failed: ${s.lastAutoError}'),
-                        style: TextStyle(color: Colors.red.shade700))
+                        style: TextStyle(color: toneFg(context, Colors.red)))
                     : s.lastManualAt != null
                         ? Text(tr('Ultimul backup manual: ${_formatDate(s.lastManualAt!)}', 'Last manual backup: ${_formatDate(s.lastManualAt!)}'))
                         : null,
               ),
             ),
           Card(
-            color: s.hasPassword ? null : Colors.orange.shade50,
+            color: s.hasPassword ? null : tintBg(context, Colors.orange),
             child: ListTile(
               leading: Icon(
                 s.hasPassword ? Icons.lock_outline : Icons.lock_open,
-                color: s.hasPassword ? _teal : Colors.orange.shade800,
+                color: s.hasPassword ? Theme.of(context).colorScheme.primary : Colors.orange.shade800,
               ),
               title: Text(s.hasPassword
                   ? tr('Backup-urile sunt criptate cu parolă', 'Backups are encrypted with a password')
@@ -418,7 +415,7 @@ class _BackupScreenState extends State<BackupScreen> {
           if (_message != null) ...[
             const SizedBox(height: 16),
             Card(
-              color: _messageIsError ? Colors.red.shade50 : Colors.green.shade50,
+              color: _messageIsError ? tintBg(context, Colors.red) : tintBg(context, Colors.green),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
@@ -434,7 +431,7 @@ class _BackupScreenState extends State<BackupScreen> {
           ],
           const SizedBox(height: 16),
           Card(
-            color: const Color(0xFFEEF2FF),
+            color: tintBg(context, Colors.teal),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(

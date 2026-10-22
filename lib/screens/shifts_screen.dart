@@ -4,6 +4,7 @@ import '../l10n.dart';
 import '../src/models.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
+import '../src/theme.dart';
 
 // ─── Turele: nume, ore, culoare ───────────────────────────────────────────────
 class ShiftsScreen extends StatefulWidget {
@@ -78,7 +79,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
                         '${preview.crossesMidnight ? ' (trece de miezul nopții)' : ''}',
                         'Length: ${fmtDuration(Duration(minutes: preview.durationMinutes))} h'
                         '${preview.crossesMidnight ? ' (past midnight)' : ''}'),
-                    style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                    style: TextStyle(color: mutedText(context), fontSize: 12),
                   ),
                   const SizedBox(height: 12),
                   Wrap(
@@ -178,7 +179,7 @@ class _ShiftsScreenState extends State<ShiftsScreen> {
                   'devreme, ore peste program). Se sincronizează cu telefonul partener.',
                   'Shifts are used by the work schedule and by reports (late arrivals, early '
                   'departures, overtime). They sync with the partner phone.'),
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: mutedText(context), fontSize: 12),
             ),
           ),
         ],

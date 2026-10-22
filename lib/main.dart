@@ -18,11 +18,13 @@ import 'screens/settings_screen.dart';
 import 'src/store.dart';
 import 'src/sync_service.dart';
 import 'src/ui.dart';
+import 'src/theme.dart';
 
 // ─── Punct de intrare ─────────────────────────────────────────────────────────
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppLang.load();
+  await AppTheme.load();
   runApp(const ClockingApp());
 }
 
@@ -33,13 +35,16 @@ class ClockingApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // La schimbarea limbii, aplicația se reconstruiește de la ecranul
     // principal (cheia se schimbă), ca toate textele să apară în limba nouă.
-    return ValueListenableBuilder<String>(
-      valueListenable: AppLang.code,
-      builder: (context, lang, _) => _buildApp(lang),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: AppTheme.mode,
+      builder: (context, mode, _) => ValueListenableBuilder<String>(
+        valueListenable: AppLang.code,
+        builder: (context, lang, _) => _buildApp(lang, mode),
+      ),
     );
   }
 
-  Widget _buildApp(String lang) {
+  Widget _buildApp(String lang, ThemeMode mode) {
     return MaterialApp(
       key: ValueKey(lang),
       locale: Locale(lang),
@@ -51,17 +56,9 @@ class ClockingApp extends StatelessWidget {
       ],
       title: 'Clocking',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: kTeal, brightness: Brightness.light),
-        scaffoldBackgroundColor: const Color(0xFFF1F5F9),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: kTealDark,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: false,
-        ),
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: mode,
       home: const HomePage(),
     );
   }
@@ -277,18 +274,18 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        color: tintBg(context, Colors.green),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.green.shade200),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 20),
+                          Icon(Icons.check_circle_outline, color: toneFg(context, Colors.green), size: 20),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               tr('Sincronizare activă cu:\n${SyncService.partnerPhone}', 'Sync active with:\n${SyncService.partnerPhone}'),
-                              style: TextStyle(color: Colors.green.shade800, fontSize: 13),
+                              style: TextStyle(color: toneFg(context, Colors.green), fontSize: 13),
                             ),
                           ),
                         ],
@@ -298,7 +295,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     Text(
                       tr('Fiecare pontaj, angajat, grafic și setare se trimite automat prin SMS.',
                           'Every clocking, employee, schedule and setting is sent automatically by SMS.'),
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      style: TextStyle(fontSize: 12, color: mutedText(context)),
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
@@ -311,7 +308,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           'Sau două intrări, câte un telefon la fiecare.',
                           'E.g. the entrance phone scans and the manager sees the clockings on their own phone. '
                           'Or two entrances, one phone at each.'),
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      style: TextStyle(fontSize: 12, color: mutedText(context)),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -351,9 +348,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
+                        color: tintBg(context, Colors.blue),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade100),
+                        border: Border.all(color: tintBg(context, Colors.blue)),
                       ),
                       child: Text(
                         tr('La prima sincronizare se trimit prin SMS angajații, turele, graficul și '
@@ -364,7 +361,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             'last two months are sent by SMS. After that every change is sent automatically.\n\n'
                             'Set up sync on the other phone as well, with the same code — messages '
                             'with another code are ignored. SMS are charged according to your plan.'),
-                        style: TextStyle(fontSize: 11, color: Colors.blue.shade700),
+                        style: TextStyle(fontSize: 11, color: toneFg(context, Colors.blue)),
                       ),
                     ),
                   ],
@@ -373,7 +370,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
+                        color: tintBg(context, Colors.orange),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -384,7 +381,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 'altfel SMS-urile partenerului nu sunt primite cu aplicația închisă.',
                                 'On this phone (Xiaomi) enable “Autostart” for Clocking, otherwise the '
                                 'partner\'s SMS are not received while the app is closed.'),
-                            style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
+                            style: TextStyle(fontSize: 11, color: toneFg(context, Colors.orange)),
                           ),
                           TextButton(
                             onPressed: SyncService.openAutostartSettings,
@@ -524,11 +521,45 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       onPointerDown: (_) => _touch(),
       child: Scaffold(
         appBar: AppBar(
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          toolbarHeight: 64,
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDarkTheme(context)
+                    ? const [Color(0xFF0F1A19), Color(0xFF123A35)]
+                    : const [Color(0xFF0B3D38), Color(0xFF0F766E)],
+              ),
+            ),
+          ),
+          titleSpacing: 12,
+          title: Row(
             children: [
-              Text(company.isEmpty ? 'Clocking' : company, style: const TextStyle(fontSize: 18)),
-              Text(titles[_tab], style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: const Color(0x55D4A537), width: 1.2),
+                  image: const DecorationImage(image: AssetImage('assets/icon/icon.png'), fit: BoxFit.cover),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(company.isEmpty ? 'Clocking' : company,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, letterSpacing: 0.2)),
+                    Text(titles[_tab].toUpperCase(),
+                        style: const TextStyle(
+                            fontSize: 11, color: Color(0xFFE9C46A), fontWeight: FontWeight.w600, letterSpacing: 1.4)),
+                  ],
+                ),
+              ),
             ],
           ),
           actions: [
@@ -623,7 +654,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _trialBanner() {
     final active = LicenseService.isTrialActive;
     return Material(
-      color: active ? Colors.orange.shade50 : Colors.red.shade50,
+      color: active ? tintBg(context, Colors.orange) : tintBg(context, Colors.red),
       child: InkWell(
         onTap: _openLicense,
         child: Padding(
@@ -642,7 +673,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 ),
               ),
               if (_appVersion.isNotEmpty)
-                Text('v$_appVersion', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                Text('v$_appVersion', style: TextStyle(fontSize: 11, color: mutedText(context))),
             ],
           ),
         ),
@@ -653,12 +684,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Widget _smsFailureBanner() {
     final f = _smsFailure!;
     return Material(
-      color: Colors.red.shade50,
+      color: tintBg(context, Colors.red),
       child: ListTile(
         dense: true,
-        leading: Icon(Icons.sms_failed_outlined, color: Colors.red.shade700),
+        leading: Icon(Icons.sms_failed_outlined, color: toneFg(context, Colors.red)),
         title: Text(tr('Un SMS de sincronizare nu a putut fi trimis', 'A sync SMS could not be sent'),
-            style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.w600)),
+            style: TextStyle(color: toneFg(context, Colors.red), fontWeight: FontWeight.w600)),
         subtitle: Text(f.reason),
         trailing: IconButton(
           icon: const Icon(Icons.close),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'license_service.dart';
 import 'l10n.dart';
+import 'src/theme.dart';
 
 // ─── Ecran licență ────────────────────────────────────────────────────────────
 // Status, cod de instalare, import fișier și transmiterea licenței către
@@ -20,8 +21,6 @@ class LicenseScreen extends StatefulWidget {
 }
 
 class _LicenseScreenState extends State<LicenseScreen> {
-  static const _teal = Color(0xFF0F766E);
-
   String _businessId = '';
   bool _busy = false;
 
@@ -106,7 +105,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
       if (LicenseService.newLicenseIsLifetime) {
         return (
           icon: Icons.verified_user,
-          color: Colors.green.shade700,
+          color: toneFg(context, Colors.green),
           title: tr('Licență pe viață activă', 'Lifetime license active'),
           subtitle: tr('Nu expiră.', 'It does not expire.'),
         );
@@ -134,14 +133,14 @@ class _LicenseScreenState extends State<LicenseScreen> {
     if (LicenseService.isTrialActive) {
       return (
         icon: Icons.lock_open_outlined,
-        color: Colors.orange.shade800,
+        color: toneFg(context, Colors.orange),
         title: tr('Perioadă de trial', 'Trial period'),
         subtitle: tr('${LicenseService.trialDaysLeft} zile rămase$invalidNote', '${LicenseService.trialDaysLeft} days left$invalidNote'),
       );
     }
     return (
       icon: Icons.lock_outline,
-      color: Colors.red.shade700,
+      color: toneFg(context, Colors.red),
       title: tr('Fără licență', 'No license'),
       subtitle: tr('Perioada de trial a expirat. Pontajul prin scanare '
           'continuă, dar adăugarea de angajați, graficul de lucru și '
@@ -163,8 +162,6 @@ class _LicenseScreenState extends State<LicenseScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(tr('Licență', 'License')),
-        backgroundColor: _teal,
-        foregroundColor: Colors.white,
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -236,7 +233,7 @@ class _LicenseScreenState extends State<LicenseScreen> {
           ],
           const SizedBox(height: 16),
           Card(
-            color: const Color(0xFFEEF2FF),
+            color: tintBg(context, Colors.teal),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Text(

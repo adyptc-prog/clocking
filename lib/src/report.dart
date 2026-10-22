@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'schedule_gen.dart';
 
 // ─── Calculul raportului de pontaj (pur, testabil) ────────────────────────────
 
@@ -61,8 +62,15 @@ class DayRow {
 class EmployeeReport {
   final Employee employee;
   final List<DayRow> rows;
+  // Program flexibil: norma perioadei (fără grafic, orele vin doar din pontaj).
+  final int? normMinutes;
 
-  const EmployeeReport(this.employee, this.rows);
+  const EmployeeReport(this.employee, this.rows, {this.normMinutes});
+
+  bool get flexible => normMinutes != null;
+
+  // Orele lucrate față de normă (flexibil) — negativ = sub normă.
+  int get normDiffMinutes => flexible ? workedMinutes - normMinutes! : 0;
 
   int get workedMinutes => rows.fold(0, (s, r) => s + r.worked.inMinutes);
   int get scheduledMinutes => rows.fold(0, (s, r) => s + r.scheduledMinutes);
@@ -71,7 +79,9 @@ class EmployeeReport {
   int get lateCount => rows.where((r) => r.lateMinutes > 0).length;
   int get lateMinutes => rows.fold(0, (s, r) => s + r.lateMinutes);
   int get earlyMinutes => rows.fold(0, (s, r) => s + r.earlyMinutes);
-  int get overtimeMinutes => rows.fold(0, (s, r) => s + r.overtimeMinutes);
+  int get overtimeMinutes => flexible
+      ? (normDiffMinutes > 0 ? normDiffMinutes : 0)
+      : rows.fold(0, (s, r) => s + r.overtimeMinutes);
   int get incompleteCount => rows.where((r) => r.incomplete).length;
 
   // Zilele de concediu, pe tip (CO, CM, CFP, AL).
@@ -126,6 +136,8 @@ EmployeeReport buildEmployeeReport({
   required DateTime to,
   required int toleranceMinutes,
   required DateTime now,
+  // Norma zilnică a unui angajat cu program flexibil; null = după grafic.
+  int? flexibleDailyMinutes,
 }) {
   final sessions = buildSessions(
     punches.where((p) => p.employeeId == employee.id).toList(),
@@ -193,5 +205,11 @@ EmployeeReport buildEmployeeReport({
       status: status,
     ));
   }
-  return EmployeeReport(employee, rows);
+  return EmployeeReport(
+    employee,
+    rows,
+    normMinutes: flexibleDailyMinutes == null
+        ? null
+        : periodNormMinutes(from, to, flexibleDailyMinutes, scheduleCode),
+  );
 }

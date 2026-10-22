@@ -13,6 +13,7 @@ import '../src/models.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
 import 'work_program_screen.dart';
+import '../src/theme.dart';
 
 // ─── Lista angajaților ────────────────────────────────────────────────────────
 class EmployeesScreen extends StatefulWidget {
@@ -76,7 +77,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.badge_outlined, size: 64, color: Colors.grey.shade400),
+                    Icon(Icons.badge_outlined, size: 64, color: subtleLine(context)),
                     const SizedBox(height: 12),
                     Text(
                       tr('Adaugă angajații. Fiecare primește un cod QR pe care îl scanează '
@@ -93,33 +94,38 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
               padding: const EdgeInsets.only(bottom: 88),
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          tr('${_store.activeEmployees.length} activi din ${employees.length}',
-                              '${_store.activeEmployees.length} active of ${employees.length}'),
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            tr('${_store.activeEmployees.length} angajați activi din ${employees.length}',
+                                '${_store.activeEmployees.length} active employees of ${employees.length}'),
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.print_outlined),
+                            label: Text(tr('Printează toate codurile QR', 'Print all QR codes')),
+                            onPressed: _printAll,
+                          ),
+                        ],
                       ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.print_outlined),
-                        label: Text(tr('Printează toate codurile', 'Print all codes')),
-                        onPressed: _printAll,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
                 for (final e in employees)
                   ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: e.active ? kTeal : Colors.grey.shade400,
+                      backgroundColor: e.active ? kTeal : subtleLine(context),
                       foregroundColor: Colors.white,
                       child: Text(e.name.isEmpty ? '?' : e.name.characters.first.toUpperCase()),
                     ),
                     title: Text(e.name,
-                        style: TextStyle(color: e.active ? null : Colors.grey.shade600)),
+                        style: TextStyle(color: e.active ? null : mutedText(context))),
                     subtitle: Text([
                       if (e.role.isNotEmpty) e.role,
                       if (!e.active) tr('inactiv', 'inactive'),
@@ -332,7 +338,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: subtleLine(context)),
                 ),
                 child: Column(
                   children: [
@@ -352,7 +358,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
                     if (e.role.isNotEmpty)
-                      Text(e.role, style: TextStyle(color: Colors.grey.shade700)),
+                      Text(e.role, style: TextStyle(color: mutedText(context))),
                   ],
                 ),
               ),
@@ -364,7 +370,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
               child: Text(
                 tr('Angajat inactiv — codul nu e acceptat la scanare.', 'Inactive employee — the code is not accepted when scanned.'),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.red.shade700),
+                style: TextStyle(color: toneFg(context, Colors.red)),
               ),
             ),
           const SizedBox(height: 16),
@@ -422,7 +428,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
                 ListTile(
                   leading: Icon(Icons.delete_outline, color: Colors.red.shade400),
                   title: Text(tr('Șterge angajatul', 'Delete the employee'),
-                      style: TextStyle(color: Colors.red.shade700)),
+                      style: TextStyle(color: toneFg(context, Colors.red))),
                   onTap: () => _delete(e),
                 ),
               ],
@@ -432,7 +438,7 @@ class _EmployeeDetailScreenState extends State<EmployeeDetailScreen> {
           Text(
             tr('Adăugat la ${fmtDate(e.createdAt)}', 'Added on ${fmtDate(e.createdAt)}'),
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TextStyle(color: mutedText(context), fontSize: 12),
           ),
         ],
       ),

@@ -4,6 +4,7 @@ import '../l10n.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
 import 'shifts_screen.dart';
+import '../src/theme.dart';
 
 // ─── Setări ───────────────────────────────────────────────────────────────────
 class SettingsScreen extends StatefulWidget {
@@ -148,10 +149,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (_store.hasPin)
             ListTile(
               leading: const SizedBox(),
-              title: Text(tr('Elimină PIN-ul', 'Remove the PIN'), style: TextStyle(color: Colors.red.shade700)),
+              title: Text(tr('Elimină PIN-ul', 'Remove the PIN'), style: TextStyle(color: toneFg(context, Colors.red))),
               onTap: _removePin,
             ),
           const Divider(),
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: AppTheme.mode,
+            builder: (context, mode, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SwitchListTile(
+                  secondary: Icon(isDarkTheme(context) ? Icons.dark_mode : Icons.dark_mode_outlined),
+                  title: Text(tr('Mod întunecat', 'Dark mode')),
+                  subtitle: Text(mode == ThemeMode.system
+                      ? tr('Automat, ca telefonul', 'Automatic, like the phone')
+                      : tr('Ales manual', 'Chosen manually')),
+                  value: isDarkTheme(context),
+                  onChanged: (v) => AppTheme.set(v ? ThemeMode.dark : ThemeMode.light),
+                ),
+                if (mode != ThemeMode.system)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 64, bottom: 4),
+                      child: TextButton(
+                        onPressed: () => AppTheme.set(ThemeMode.system),
+                        child: Text(tr('Revino la automat', 'Back to automatic')),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           SwitchListTile(
             secondary: const Icon(Icons.camera_front_outlined),
             title: Text(tr('Camera frontală pentru scanare', 'Front camera for scanning')),
@@ -179,7 +208,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'PIN-ul, camera și sunetul sunt doar ale acestui telefon.',
                   'The business name, tolerance and shifts sync with the partner phone; '
                   'the PIN, camera and sound belong to this phone only.'),
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(color: mutedText(context), fontSize: 12),
             ),
           ),
         ],

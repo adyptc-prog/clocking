@@ -5,6 +5,7 @@ import '../src/models.dart';
 import '../src/schedule_gen.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
+import '../src/theme.dart';
 
 // ─── Programele de lucru: ce program are fiecare angajat ──────────────────────
 class WorkProgramsScreen extends StatefulWidget {
@@ -47,7 +48,7 @@ class _WorkProgramsScreenState extends State<WorkProgramsScreen> {
                   '„Generează grafic” completează singur luna, păstrând excepțiile (concedii, zile libere).',
                   'Choose each employee\'s program once. Then, in “Schedule”, the “Generate schedule” '
                   'button fills in the month by itself, keeping the exceptions (leave, days off).'),
-              style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              style: TextStyle(color: mutedText(context), fontSize: 13),
             ),
           ),
           for (final e in employees)
@@ -83,9 +84,12 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
   late Set<String> _selected;
   PatternKind _kind = PatternKind.fixed;
   Set<int> _weekdays = {1, 2, 3, 4, 5};
-  String? _fixedShift;
+  // Program fix: ora de început și durata (turele se creează din ele).
+  int _fixedStart = 8 * 60;
+  int _fixedLength = 8 * 60;
   int _rotationCount = 2;
-  List<String?> _rotation = [null, null, null];
+  // Ture rotative: (început, durată) pentru fiecare tură din rotație.
+  final List<(int, int)> _slots = [(6 * 60, 8 * 60), (14 * 60, 8 * 60), (22 * 60, 8 * 60)];
   int _rotateEvery = 7;
   List<String> _cycle = [];
   String? _preset;
@@ -101,8 +105,6 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
     _selected = Set.of(widget.employeeIds);
     final ids = _store.shifts.map((s) => s.id).toList();
     String? pick(String id) => ids.contains(id) ? id : (ids.isEmpty ? null : ids.first);
-    _fixedShift = pick('s1');
-    _rotation = [pick('s2'), pick('s3'), pick('s4')];
     _normShifts = {if (pick('s1') != null) pick('s1')!};
     _anchor = DateTime(_anchor.year, _anchor.month, 1);
     _applyPreset(CyclePreset.presets.first);
@@ -115,18 +117,31 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
       _anchor = existing.anchor;
       _dailyHours = existing.dailyMinutes ~/ 60;
       _workHolidays = existing.workHolidays;
+      final shiftMap = _store.shiftMap;
       switch (existing.kind) {
         case PatternKind.fixed:
-          _fixedShift = existing.shiftId;
+          final s = shiftMap[existing.shiftId];
+          if (s != null) {
+            _fixedStart = s.start;
+            _fixedLength = s.durationMinutes.clamp(60, 12 * 60);
+          }
         case PatternKind.rotating:
           _rotationCount = existing.shifts.length.clamp(2, 3);
-          _rotation = [...existing.shifts.map<String?>((s) => s), null, null, null].take(3).toList();
+          final slots = [
+            for (final id in existing.shifts)
+              if (shiftMap[id] != null) (shiftMap[id]!.start, shiftMap[id]!.durationMinutes.clamp(60, 12 * 60)),
+          ];
+          for (var i = 0; i < slots.length && i < 3; i++) {
+            _slots[i] = slots[i];
+          }
           _rotateEvery = existing.rotateEveryDays;
         case PatternKind.cycle:
           _cycle = List.of(existing.cycle);
           _preset = null;
         case PatternKind.norm:
           _normShifts = Set.of(existing.shifts);
+        case PatternKind.flexible:
+          break;
       }
     }
   }
@@ -141,12 +156,7 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
     if (_selected.isEmpty) return tr('Alege cel puțin un angajat.', 'Choose at least one employee.');
     switch (_kind) {
       case PatternKind.fixed:
-        if (_fixedShift == null) return tr('Alege tura.', 'Choose the shift.');
-        if (_weekdays.isEmpty) return tr('Alege zilele lucrătoare.', 'Choose the working days.');
       case PatternKind.rotating:
-        if (_rotation.take(_rotationCount).any((s) => s == null)) {
-          return tr('Alege toate turele rotației.', 'Choose all shifts of the rotation.');
-        }
         if (_weekdays.isEmpty) return tr('Alege zilele lucrătoare.', 'Choose the working days.');
       case PatternKind.cycle:
         if (!_cycle.any(DayCode.isShift)) {
@@ -155,6 +165,8 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
       case PatternKind.norm:
         if (_normShifts.isEmpty) return tr('Alege cel puțin o tură.', 'Choose at least one shift.');
         if (_weekdays.isEmpty) return tr('Alege zilele în care poate lucra.', 'Choose the days they can work.');
+      case PatternKind.flexible:
+        break;
     }
     return null;
   }
@@ -166,12 +178,18 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
       return;
     }
     final employees = _store.activeEmployees.where((e) => _selected.contains(e.id)).toList();
+    // Orele alese devin ture (refolosite dacă există deja cu aceleași ore).
+    final fixedShift = _kind == PatternKind.fixed ? await _store.ensureShift(_fixedStart, _fixedLength) : '';
+    final rotation = <String>[
+      if (_kind == PatternKind.rotating)
+        for (final slot in _slots.take(_rotationCount)) await _store.ensureShift(slot.$1, slot.$2),
+    ];
     final base = WorkProgram(
       kind: _kind,
       weekdays: Set.of(_weekdays),
-      shiftId: _fixedShift ?? '',
+      shiftId: fixedShift,
       shifts: switch (_kind) {
-        PatternKind.rotating => _rotation.take(_rotationCount).whereType<String>().toList(),
+        PatternKind.rotating => rotation,
         PatternKind.norm => _store.shifts.map((s) => s.id).where(_normShifts.contains).toList(),
         _ => const <String>[],
       },
@@ -212,7 +230,7 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: kTealDark)),
+                Text(title, style: TextStyle(fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.primary)),
                 const SizedBox(height: 8),
                 ...children,
               ],
@@ -222,7 +240,7 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
 
     Widget hint(String text) => Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Text(text, style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+          child: Text(text, style: TextStyle(color: mutedText(context), fontSize: 13)),
         );
 
     Widget weekdayPicker() => Wrap(
@@ -237,16 +255,53 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
           ],
         );
 
-    Widget shiftDropdown(String? value, ValueChanged<String?> onChanged, {String? label}) =>
-        DropdownButtonFormField<String>(
-          initialValue: shifts.any((s) => s.id == value) ? value : null,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: label ?? tr('Tura', 'Shift'), border: const OutlineInputBorder()),
-          items: [
-            for (final s in shifts) DropdownMenuItem(value: s.id, child: Text('${s.name} · ${s.hoursLabel}')),
+    // Ora de început + durata (1–12 ore) pentru o tură a programului.
+    Widget hoursPicker(String label, int start, int length, void Function(int start, int length) onChanged) {
+      final end = (start + length) % (24 * 60);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.schedule),
+                    label: Text('${tr('Început', 'Start')} ${fmtMinutes(start)}'),
+                    onPressed: () async {
+                      final t = await pickTime(context, TimeOfDay(hour: start ~/ 60, minute: start % 60));
+                      if (t != null) onChanged(t.hour * 60 + t.minute, length);
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: length,
+                    isExpanded: true,
+                    decoration: InputDecoration(labelText: tr('Durata', 'Length'), isDense: true),
+                    items: [
+                      for (var h = 1; h <= 12; h++)
+                        DropdownMenuItem(value: h * 60, child: Text('$h ${tr(h == 1 ? 'oră' : 'ore', h == 1 ? 'hour' : 'hours')}')),
+                    ],
+                    onChanged: (v) => onChanged(start, v ?? length),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              tr('Program: ${fmtMinutes(start)}–${fmtMinutes(end)}${end <= start ? ' (trece de miezul nopții)' : ''}',
+                  'Hours: ${fmtMinutes(start)}–${fmtMinutes(end)}${end <= start ? ' (past midnight)' : ''}'),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
           ],
-          onChanged: onChanged,
-        );
+        ),
+      );
+    }
 
     Widget anchorPicker(String label) => OutlinedButton.icon(
           icon: const Icon(Icons.event),
@@ -296,14 +351,20 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
                 DropdownMenuItem(value: PatternKind.rotating, child: Text(tr('Ture rotative (2 sau 3 ture)', 'Rotating shifts (2 or 3)'))),
                 DropdownMenuItem(value: PatternKind.cycle, child: Text(tr('Ciclu continuu (12/24, 24/72...)', 'Continuous cycle (12/24, 24/72...)'))),
                 DropdownMenuItem(value: PatternKind.norm, child: Text(tr('Normă lunară automată', 'Automatic monthly norm'))),
+                DropdownMenuItem(value: PatternKind.flexible, child: Text(tr('Program flexibil (ore din pontaj)', 'Flexible (hours from clockings)'))),
               ],
               onChanged: (v) => setState(() => _kind = v ?? _kind),
             ),
             const SizedBox(height: 12),
             ...switch (_kind) {
               PatternKind.fixed => [
-                  hint(tr('Aceeași tură în zilele alese.', 'The same shift on the chosen days.')),
-                  shiftDropdown(_fixedShift, (v) => setState(() => _fixedShift = v)),
+                  hint(tr('Același program în zilele alese. Alege ora de început și câte ore lucrează.',
+                      'The same hours on the chosen days. Choose the start time and how many hours.')),
+                  hoursPicker(tr('Programul zilei', 'Daily hours'), _fixedStart, _fixedLength,
+                      (s, l) => setState(() {
+                            _fixedStart = s;
+                            _fixedLength = l;
+                          })),
                   const SizedBox(height: 10),
                   weekdayPicker(),
                 ],
@@ -319,11 +380,9 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
                     onSelectionChanged: (s) => setState(() => _rotationCount = s.first),
                   ),
                   const SizedBox(height: 10),
-                  for (var i = 0; i < _rotationCount; i++) ...[
-                    shiftDropdown(_rotation[i], (v) => setState(() => _rotation[i] = v),
-                        label: tr('Tura ${i + 1} din rotație', 'Rotation shift ${i + 1}')),
-                    const SizedBox(height: 8),
-                  ],
+                  for (var i = 0; i < _rotationCount; i++)
+                    hoursPicker(tr('Tura ${i + 1} din rotație', 'Rotation shift ${i + 1}'), _slots[i].$1, _slots[i].$2,
+                        (s, l) => setState(() => _slots[i] = (s, l))),
                   DropdownButtonFormField<int>(
                     initialValue: _rotateEvery,
                     decoration: InputDecoration(labelText: tr('Schimbarea turei', 'Shift change'), border: const OutlineInputBorder()),
@@ -435,6 +494,14 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
                   Text(tr('Zilele în care poate lucra:', 'Days they can work:'), style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 6),
                   weekdayPicker(),
+                ],
+              PatternKind.flexible => [
+                  hint(tr('Angajatul vine și pleacă la ore diferite. Nu are grafic: în rapoarte se socotesc '
+                      'orele lucrate din pontaj și se compară cu norma (zilele lucrătoare × norma zilnică, '
+                      'minus concediile). Nu se calculează întârzieri.',
+                      'The employee comes and goes at different times. There is no schedule: reports count '
+                      'the hours worked from clockings and compare them with the norm (working days × daily '
+                      'norm, minus leave). No late arrivals are computed.')),
                 ],
             },
             if (_kind != PatternKind.fixed && _kind != PatternKind.norm && _selected.length > 1)

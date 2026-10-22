@@ -10,6 +10,7 @@ import '../src/scan_logic.dart';
 import '../src/store.dart';
 import '../src/sync_service.dart';
 import '../src/ui.dart';
+import '../src/theme.dart';
 
 // ─── Ecranul de pontaj (telefonul / tableta de la intrare) ───────────────────
 // Angajatul arată codul QR (printat sau pe telefonul lui) camerei. Scanarea
@@ -391,14 +392,14 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
   Widget _sidePanel() {
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(tr('Pontaje de azi', 'Today\'s clockings'),
-                style: const TextStyle(fontWeight: FontWeight.w600, color: kTealDark)),
+                style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
           ),
           Expanded(
             child: _recent.isEmpty
@@ -412,7 +413,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                             : tr('Arată codul QR camerei pentru a ponta intrarea sau ieșirea.',
                                 'Show the QR code to the camera to clock in or out.'),
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: TextStyle(color: mutedText(context)),
                       ),
                     ),
                   )

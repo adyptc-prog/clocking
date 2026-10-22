@@ -4,8 +4,10 @@ import '../l10n.dart';
 import '../src/export.dart';
 import '../src/models.dart';
 import '../src/report.dart';
+import '../src/schedule_gen.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
+import '../src/theme.dart';
 
 // ─── Rapoarte: perioadă aleasă, un angajat sau toți ───────────────────────────
 class ReportsScreen extends StatefulWidget {
@@ -93,6 +95,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             to: _to,
             toleranceMinutes: _store.lateToleranceMinutes,
             now: now,
+            flexibleDailyMinutes: _store.programOf(e.id)?.kind == PatternKind.flexible
+                ? _store.programOf(e.id)!.dailyMinutes
+                : null,
           ),
       ];
       // Toți: fără angajații inactivi care n-au nimic în perioadă.
@@ -235,8 +240,8 @@ class _ReportCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
-              Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color ?? kTealDark)),
+              Text(label, style: TextStyle(fontSize: 11, color: mutedText(context))),
+              Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color ?? Theme.of(context).colorScheme.primary)),
             ],
           ),
         );
@@ -260,7 +265,13 @@ class _ReportCard extends StatelessWidget {
             runSpacing: 6,
             children: [
               stat(tr('Ore lucrate', 'Hours worked'), fmtDuration(Duration(minutes: r.workedMinutes))),
-              stat(tr('Ore programate', 'Scheduled'), fmtDuration(Duration(minutes: r.scheduledMinutes))),
+              if (r.flexible) ...[
+                stat(tr('Normă', 'Norm'), fmtDuration(Duration(minutes: r.normMinutes!))),
+                stat(tr('Față de normă', 'Vs. norm'),
+                    '${r.normDiffMinutes > 0 ? '+' : ''}${fmtDuration(Duration(minutes: r.normDiffMinutes))}',
+                    color: r.normDiffMinutes < 0 ? Colors.orange.shade800 : null),
+              ] else
+                stat(tr('Ore programate', 'Scheduled'), fmtDuration(Duration(minutes: r.scheduledMinutes))),
               stat(tr('Peste program', 'Overtime'), fmtDuration(Duration(minutes: r.overtimeMinutes))),
               stat(tr('Zile prezent', 'Days present'), '${r.daysPresent}'),
               stat(tr('Absențe', 'Absences'), '${r.absences}', color: r.absences > 0 ? Colors.red.shade700 : null),
@@ -270,7 +281,7 @@ class _ReportCard extends StatelessWidget {
                   color: r.earlyMinutes > 0 ? Colors.orange.shade800 : null),
               stat(tr('Incomplete', 'Incomplete'), '${r.incompleteCount}',
                   color: r.incompleteCount > 0 ? Colors.orange.shade800 : null),
-              for (final l in leaves.entries) stat(DayCode.label(l.key), '${l.value}', color: Colors.green.shade800),
+              for (final l in leaves.entries) stat(DayCode.label(l.key), '${l.value}', color: toneFg(context, Colors.green)),
             ],
           ),
           const SizedBox(height: 8),
@@ -278,7 +289,7 @@ class _ReportCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(8),
               child: Text(tr('Fără pontaje în perioadă.', 'No clockings in the period.'),
-                  style: TextStyle(color: Colors.grey.shade600)),
+                  style: TextStyle(color: mutedText(context))),
             ),
           for (final d in visibleRows)
             ListTile(

@@ -5,6 +5,7 @@ import '../l10n.dart';
 import '../license_screen.dart';
 import '../license_service.dart';
 import 'models.dart';
+import 'theme.dart';
 
 // ─── Elemente comune ale interfeței ───────────────────────────────────────────
 const kTeal = Color(0xFF0F766E);
@@ -14,11 +15,9 @@ const kAmber = Color(0xFFFBBF24);
 void showSnack(BuildContext context, String text, {Color? color, Duration? duration}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(text),
-      backgroundColor: color,
-      duration: duration ?? const Duration(seconds: 4),
-    ));
+    ..showSnackBar(
+      SnackBar(content: Text(text), backgroundColor: color, duration: duration ?? const Duration(seconds: 4)),
+    );
 }
 
 Future<bool> confirmDialog(
@@ -53,13 +52,16 @@ Future<bool> ensureLicensed(BuildContext context) async {
   final open = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      icon: Icon(Icons.lock_outline, color: Colors.red.shade700),
+      icon: Icon(Icons.lock_outline, color: toneFg(context, Colors.red)),
       title: Text(tr('Perioada de trial a expirat', 'The trial period has expired')),
-      content: Text(tr(
+      content: Text(
+        tr(
           'Pontajul prin scanare continuă să funcționeze. Pentru a adăuga '
               'angajați, a genera grafice și rapoarte, activează licența.',
           'Clocking in by scanning keeps working. To add employees and to '
-              'generate schedules and reports, activate the license.')),
+              'generate schedules and reports, activate the license.',
+        ),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('Închide', 'Close'))),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('Licență', 'License'))),
@@ -73,8 +75,7 @@ Future<bool> ensureLicensed(BuildContext context) async {
 }
 
 // Codul PIN (4–8 cifre). [confirm] cere introducerea de două ori.
-Future<String?> askPin(BuildContext context,
-    {required String title, bool confirm = false, String? message}) {
+Future<String?> askPin(BuildContext context, {required String title, bool confirm = false, String? message}) {
   final c1 = TextEditingController();
   final c2 = TextEditingController();
   String? error;
@@ -95,21 +96,14 @@ Future<String?> askPin(BuildContext context,
           Navigator.pop(ctx, p);
         }
 
-        InputDecoration deco(String label, {String? err}) => InputDecoration(
-              labelText: label,
-              errorText: err,
-              border: const OutlineInputBorder(),
-              counterText: '',
-            );
+        InputDecoration deco(String label, {String? err}) =>
+            InputDecoration(labelText: label, errorText: err, border: const OutlineInputBorder(), counterText: '');
         return AlertDialog(
           title: Text(title),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (message != null) ...[
-                Text(message, style: const TextStyle(fontSize: 13)),
-                const SizedBox(height: 12),
-              ],
+              if (message != null) ...[Text(message, style: const TextStyle(fontSize: 13)), const SizedBox(height: 12)],
               TextField(
                 controller: c1,
                 autofocus: true,
@@ -145,21 +139,14 @@ Future<String?> askPin(BuildContext context,
 }
 
 // Selector de dată, în limba aplicației.
-Future<DateTime?> pickDate(BuildContext context, DateTime initial) => showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
+Future<DateTime?> pickDate(BuildContext context, DateTime initial) =>
+    showDatePicker(context: context, initialDate: initial, firstDate: DateTime(2020), lastDate: DateTime(2100));
 
 Future<TimeOfDay?> pickTime(BuildContext context, TimeOfDay initial) => showTimePicker(
-      context: context,
-      initialTime: initial,
-      builder: (ctx, child) => MediaQuery(
-        data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true),
-        child: child!,
-      ),
-    );
+  context: context,
+  initialTime: initial,
+  builder: (ctx, child) => MediaQuery(data: MediaQuery.of(ctx).copyWith(alwaysUse24HourFormat: true), child: child!),
+);
 
 // Eticheta colorată a unei zile din grafic.
 class DayChip extends StatelessWidget {
@@ -182,31 +169,43 @@ class DayChip extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: width,
-        height: height,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Color(color),
-          borderRadius: BorderRadius.circular(4),
-          border: marked
-              ? Border.all(color: Colors.black87, width: 2)
-              : (outlined ? Border.all(color: Colors.black26) : null),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: isDarkColor(color) ? Colors.white : Colors.black87,
-          ),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final dark = isDarkTheme(context);
+    final surface = Theme.of(context).colorScheme.surface;
+    // În modul întunecat, culorile pastel (liber, concedii) se estompează, iar
+    // zilele goale iau culoarea suprafeței — altfel ar străluci pe ecran.
+    final pastel = _isPastel(color);
+    final bg = color == 0xFFFFFFFF
+        ? Theme.of(context).colorScheme.surfaceContainerLow
+        : (dark && pastel ? Color.lerp(Color(color), surface, 0.62)! : Color(color));
+    final fg = dark && pastel ? Color(color) : (isDarkColor(color) ? Colors.white : Colors.black87);
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: marked
+            ? Border.all(color: isDarkTheme(context) ? Colors.white : Colors.black87, width: 2)
+            : (outlined ? Border.all(color: subtleLine(context)) : null),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
+      ),
+    );
+  }
 }
 
 // Chip-ul unei zile (cod din grafic).
-Widget dayCodeChip(String code, Map<String, Shift> shifts,
-    {double width = 34, double height = 30, bool exception = false}) {
+Widget dayCodeChip(
+  String code,
+  Map<String, Shift> shifts, {
+  double width = 34,
+  double height = 30,
+  bool exception = false,
+}) {
   if (DayCode.isShift(code)) {
     final s = shifts[code];
     if (s == null) {
@@ -217,5 +216,19 @@ Widget dayCodeChip(String code, Map<String, Shift> shifts,
   if (code.isEmpty) {
     return DayChip(label: '', color: 0xFFFFFFFF, width: width, height: height, outlined: true);
   }
-  return DayChip(label: DayCode.short(code), color: dayCodeColor(code), width: width, height: height, marked: exception);
+  return DayChip(
+    label: DayCode.short(code),
+    color: dayCodeColor(code),
+    width: width,
+    height: height,
+    marked: exception,
+  );
+}
+
+// Culorile foarte deschise (liber, concedii) — estompate în modul întunecat.
+bool _isPastel(int argb) {
+  final r = (argb >> 16) & 0xFF;
+  final g = (argb >> 8) & 0xFF;
+  final b = argb & 0xFF;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 200;
 }

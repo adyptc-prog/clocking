@@ -5,6 +5,7 @@ import '../src/models.dart';
 import '../src/report.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
+import '../src/theme.dart';
 
 // ─── Prezența pe o zi: cine a venit, cine lipsește, corecturi manuale ─────────
 class AttendanceScreen extends StatefulWidget {
@@ -72,7 +73,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return Column(
       children: [
         Material(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           elevation: 1,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -92,7 +93,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       children: [
                         Text(
                           isToday ? tr('Azi', 'Today') : weekdayShortNames()[_day.weekday - 1],
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                          style: TextStyle(color: mutedText(context), fontSize: 12),
                         ),
                         Text(fmtDate(_day),
                             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
@@ -154,7 +155,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (DayCode.isShift(code) && _day.isBefore(dayOf(DateTime.now()))) {
       return Icon(Icons.cancel, color: Colors.red.shade600);
     }
-    return Icon(Icons.radio_button_unchecked, color: Colors.grey.shade400);
+    return Icon(Icons.radio_button_unchecked, color: subtleLine(context));
   }
 
   String _describe(List<WorkSession> sessions, String code, Map<String, Shift> shifts) {

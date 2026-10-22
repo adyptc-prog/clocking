@@ -319,6 +319,25 @@ class Store extends ChangeNotifier {
     await _send(SyncCodec.shifts(_shifts, _shiftsUpdated));
   }
 
+  // Tura cu ora de început și durata date (din programul unui angajat): cea
+  // existentă cu aceleași ore, altfel una nouă, numită după ore („09–17”).
+  Future<String> ensureShift(int start, int durationMinutes) async {
+    final end = (start + durationMinutes) % (24 * 60);
+    for (final s in _shifts) {
+      if (s.start == start && s.end == end && s.durationMinutes == durationMinutes) return s.id;
+    }
+    String hm(int m) => m % 60 == 0 ? (m ~/ 60).toString().padLeft(2, '0') : fmtMinutes(m);
+    final shift = Shift(
+      id: nextShiftId(),
+      name: '${hm(start)}–${hm(end)}',
+      start: start,
+      end: end,
+      color: _shifts.length % kShiftPalette.length,
+    );
+    await saveShifts([..._shifts, shift]);
+    return shift.id;
+  }
+
   // Id nou pentru o tură adăugată de manager.
   String nextShiftId() {
     var n = 1;

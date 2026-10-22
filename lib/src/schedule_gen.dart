@@ -16,6 +16,9 @@ enum PatternKind {
   // Normă lunară automată: turele alese se distribuie în lună cât să acopere
   // norma legală de ore, cu zile libere între ele.
   norm,
+  // Program flexibil: fără grafic; orele se socotesc doar din pontaj și se
+  // compară cu norma.
+  flexible,
 }
 
 class LeaveRange {
@@ -123,6 +126,8 @@ Map<DateTime, String> generateSchedule(ScheduleRequest r) {
       case PatternKind.norm:
         // Norma lunară are nevoie de luna întreagă — vezi generateMonth.
         code = DayCode.off;
+      case PatternKind.flexible:
+        code = DayCode.none;
     }
 
     // Prioritate: concediu > sărbătoare legală > zi liberă aleasă > tipar.
@@ -278,6 +283,8 @@ class WorkProgram {
       PatternKind.rotating => '${tr('Ture rotative', 'Rotating')}: ${shifts.map(name).join(' → ')} · $days$hours',
       PatternKind.cycle => '${tr('Ciclu', 'Cycle')}: ${cycle.map(name).join(' ')} · ${tr('din', 'from')} ${fmtDate(anchor)}$hours',
       PatternKind.norm => '${tr('Normă lunară', 'Monthly norm')}: ${shifts.map(name).join(', ')} · $days$hours',
+      PatternKind.flexible => '${tr('Flexibil — ore din pontaj', 'Flexible — hours from clockings')} · '
+          '${tr('normă', 'norm')} ${dailyMinutes ~/ 60}h/${tr('zi', 'day')}',
     };
   }
 }
@@ -302,6 +309,8 @@ String patternCode(WorkProgram p, DateTime d) {
       return p.cycle[_floorMod(_daysBetween(p.anchor, d), p.cycle.length)];
     case PatternKind.norm:
       return DayCode.off;
+    case PatternKind.flexible:
+      return DayCode.none;
   }
 }
 
@@ -331,6 +340,19 @@ int monthTargetMinutes(DateTime month, int dailyMinutes, Map<DateTime, String> e
   return t < 0 ? 0 : t;
 }
 
+// Norma pe intervalul [from, to]: zilele lucrătoare × norma zilnică, minus
+// zilele de concediu căzute în zile lucrătoare.
+int periodNormMinutes(DateTime from, DateTime to, int dailyMinutes, String Function(DateTime) code) {
+  final holidays = <DateTime>{
+    for (var y = from.year; y <= to.year; y++) ...romanianHolidays(y),
+  };
+  var n = 0;
+  for (var d = dayOf(from); !d.isAfter(dayOf(to)); d = DateTime(d.year, d.month, d.day + 1)) {
+    if (_isWorkingDay(d, holidays) && !DayCode.isLeave(code(d))) n++;
+  }
+  return n * dailyMinutes;
+}
+
 // Orele programate dintr-o lună de grafic.
 int plannedMinutes(Iterable<String> codes, Map<String, Shift> shifts) =>
     codes.fold(0, (s, c) => s + (DayCode.isShift(c) ? (shifts[c]?.durationMinutes ?? 0) : 0));
@@ -353,6 +375,14 @@ Map<DateTime, String> generateMonth({
     for (var day = 1; day <= daysInMonth(month); day++) DateTime(month.year, month.month, day),
   ].where((d) => !exceptions.containsKey(d)).toList();
   bool holidayOff(DateTime d) => holidays.contains(d) && !program.workHolidays;
+
+  // Flexibil: fără ture; doar sărbătorile rămân marcate.
+  if (program.kind == PatternKind.flexible) {
+    for (final d in free) {
+      out[d] = holidayOff(d) ? DayCode.holiday : DayCode.none;
+    }
+    return out;
+  }
 
   if (program.kind != PatternKind.norm) {
     for (final d in free) {

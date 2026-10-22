@@ -41,11 +41,13 @@ attendance reports. Everything stays on the phone, with no server and no interne
   more employees, then **Generate schedule** fills in the month for everyone and keeps the
   exceptions. Romanian public holidays (Orthodox Easter included) are days off unless the program
   works on holidays. Each employee's scheduled hours are shown against the month's norm. The month
-  can still be edited day by day and is exported to PDF or CSV.
+  can still be edited day by day and is exported to PDF or CSV. Employees with **flexible hours**
+  have no schedule: their hours come from the clockings and are compared with the norm.
 - **Reports** for any period, for one employee or all of them: hours worked and scheduled, late
   arrivals, early departures, overtime, absences, leave days and incomplete records. Exported as PDF
   or CSV (Excel).
 - **Manager PIN:** on the entrance phone, employees only see the clocking screen.
+- **Light and dark mode**, automatic or chosen in Settings.
 - **Two-phone sync over SMS**, with messages signed by a pairing code entered on both phones. For
   example, the entrance phone scans and the manager's phone receives every clocking.
 - **Encrypted backup**, daily and manual, to phone storage or a USB stick

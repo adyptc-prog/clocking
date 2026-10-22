@@ -40,6 +40,8 @@ object BackupFormat {
         "flutter.license_expiry_warned_on",
         // Limba e a telefonului, nu a datelor: un backup restaurat nu o schimbă.
         "flutter.app_language",
+        // La fel tema (luminoasă / întunecată).
+        "flutter.theme_mode",
     )
 
     // Partenerul de sincronizare. La restore pe telefonul partener, cel din

@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../l10n.dart';
 import '../src/export.dart';
 import '../src/models.dart';
+import '../src/schedule_gen.dart';
 import '../src/store.dart';
 import '../src/ui.dart';
 import 'work_program_screen.dart';
 import 'shifts_screen.dart';
+import '../src/theme.dart';
 
 // ─── Graficul de lucru pe o lună (angajați × zile) ────────────────────────────
 class ScheduleScreen extends StatefulWidget {
@@ -66,8 +68,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           shrinkWrap: true,
           children: [
             ListTile(
-              title: Text('${e.name} · ${weekdayShortNames()[day.weekday - 1]} ${fmtDate(day)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              title: Text(
+                '${e.name} · ${weekdayShortNames()[day.weekday - 1]} ${fmtDate(day)}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
             for (final s in shifts)
               ListTile(
@@ -88,8 +92,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ListTile(
               leading: const DayChip(label: '', color: 0xFFFFFFFF, outlined: true),
               title: Text(tr('Lasă ziua generatorului', 'Leave the day to the generator')),
-              subtitle: Text(tr('Șterge excepția; la generare ziua se completează după program.',
-                  'Removes the exception; generating fills the day from the program.')),
+              subtitle: Text(
+                tr(
+                  'Șterge excepția; la generare ziua se completează după program.',
+                  'Removes the exception; generating fills the day from the program.',
+                ),
+              ),
               onTap: () => Navigator.pop(ctx, DayCode.none),
             ),
           ],
@@ -116,10 +124,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       final open = await confirmDialog(
         context,
         title: tr('Niciun program de lucru', 'No work programs'),
-        message: tr('Alege mai întâi programul fiecărui angajat (fix, ture, ciclu sau normă lunară). '
-            'Îl alegi o singură dată; apoi graficul se generează lunar dintr-un buton.',
-            'First choose each employee\'s program (fixed, shifts, cycle or monthly norm). You choose it '
-            'once; then the schedule is generated each month with one button.'),
+        message: tr(
+          'Alege mai întâi programul fiecărui angajat (fix, ture, ciclu sau normă lunară). '
+              'Îl alegi o singură dată; apoi graficul se generează lunar dintr-un buton.',
+          'First choose each employee\'s program (fixed, shifts, cycle or monthly norm). You choose it '
+              'once; then the schedule is generated each month with one button.',
+        ),
         confirm: tr('Programe de lucru', 'Work programs'),
       );
       if (open) await _programs();
@@ -129,10 +139,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final ok = await confirmDialog(
       context,
       title: tr('Generezi graficul pentru ${fmtMonth(_month)}?', 'Generate the schedule for ${fmtMonth(_month)}?'),
-      message: tr('Luna se completează după programul fiecărui angajat (${withProgram.length} din ${employees.length}). '
-          'Excepțiile marcate (concedii, zile libere, schimbări făcute de tine) rămân neschimbate.',
-          'The month is filled in from each employee\'s program (${withProgram.length} of ${employees.length}). '
-          'Marked exceptions (leave, days off, your own changes) stay unchanged.'),
+      message: tr(
+        'Luna se completează după programul fiecărui angajat (${withProgram.length} din ${employees.length}). '
+            'Excepțiile marcate (concedii, zile libere, schimbări făcute de tine) rămân neschimbate.',
+        'The month is filled in from each employee\'s program (${withProgram.length} of ${employees.length}). '
+            'Marked exceptions (leave, days off, your own changes) stay unchanged.',
+      ),
       confirm: tr('Generează', 'Generate'),
     );
     if (!ok) return;
@@ -148,14 +160,29 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           child: ListView(
             shrinkWrap: true,
             children: [
-              for (final e in withProgram) _summaryTile(e.name, summary[e.id]!),
+              for (final e in withProgram)
+                _store.programOf(e.id)?.kind == PatternKind.flexible
+                    ? ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(e.name),
+                        subtitle: Text(
+                          tr(
+                            'Program flexibil · normă ${fmtDuration(Duration(minutes: summary[e.id]!.target))} h, orele se socotesc din pontaj',
+                            'Flexible · norm ${fmtDuration(Duration(minutes: summary[e.id]!.target))} h, hours come from clockings',
+                          ),
+                        ),
+                      )
+                    : _summaryTile(e.name, summary[e.id]!),
               if (missing.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    tr('Fără program (negenerați): ${missing.map((e) => e.name).join(', ')}',
-                        'No program (not generated): ${missing.map((e) => e.name).join(', ')}'),
-                    style: TextStyle(color: Colors.orange.shade900, fontSize: 12),
+                    tr(
+                      'Fără program (negenerați): ${missing.map((e) => e.name).join(', ')}',
+                      'No program (not generated): ${missing.map((e) => e.name).join(', ')}',
+                    ),
+                    style: TextStyle(color: toneFg(context, Colors.orange), fontSize: 12),
                   ),
                 ),
             ],
@@ -168,16 +195,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   Widget _summaryTile(String name, ({int target, int planned}) s) {
     final diff = s.planned - s.target;
-    final color = diff.abs() <= 60
-        ? Colors.green.shade700
-        : (diff > 0 ? Colors.orange.shade800 : Colors.red.shade700);
+    final color = diff.abs() <= 60 ? Colors.green.shade700 : (diff > 0 ? Colors.orange.shade800 : Colors.red.shade700);
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
       title: Text(name),
-      subtitle: Text(tr(
+      subtitle: Text(
+        tr(
           'Normă ${fmtDuration(Duration(minutes: s.target))} h · programat ${fmtDuration(Duration(minutes: s.planned))} h',
-          'Norm ${fmtDuration(Duration(minutes: s.target))} h · scheduled ${fmtDuration(Duration(minutes: s.planned))} h')),
+          'Norm ${fmtDuration(Duration(minutes: s.target))} h · scheduled ${fmtDuration(Duration(minutes: s.planned))} h',
+        ),
+      ),
       trailing: Text(
         diff == 0 ? '✓' : '${diff > 0 ? '+' : ''}${fmtDuration(Duration(minutes: diff))}',
         style: TextStyle(color: color, fontWeight: FontWeight.bold),
@@ -199,8 +227,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       await _store.setScheduleDays(e.id, days);
     }
     if (mounted) {
-      showSnack(context, tr('${DayCode.label(r.code)}: ${r.employees.length} angajați, ${days.length} zile.',
-          '${DayCode.label(r.code)}: ${r.employees.length} ${r.employees.length == 1 ? 'employee' : 'employees'}, ${days.length} ${days.length == 1 ? 'day' : 'days'}.'));
+      showSnack(
+        context,
+        tr(
+          '${DayCode.label(r.code)}: ${r.employees.length} angajați, ${days.length} zile.',
+          '${DayCode.label(r.code)}: ${r.employees.length} ${r.employees.length == 1 ? 'employee' : 'employees'}, ${days.length} ${days.length == 1 ? 'day' : 'days'}.',
+        ),
+      );
     }
   }
 
@@ -215,12 +248,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             shifts: _store.shifts,
             company: _store.companyName,
           )
-        : await scheduleCsv(
-            month: _month,
-            employees: employees,
-            code: _store.scheduleCode,
-            shifts: _store.shifts,
-          );
+        : await scheduleCsv(month: _month, employees: employees, code: _store.scheduleCode, shifts: _store.shifts);
     await shareFile(f, subject: tr('Grafic de lucru · ${fmtMonth(_month)}', 'Work schedule · ${fmtMonth(_month)}'));
   }
 
@@ -230,7 +258,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     return Column(
       children: [
         Material(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           elevation: 1,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
@@ -238,9 +266,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               children: [
                 IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _shiftMonth(-1)),
                 Expanded(
-                  child: Text(fmtMonth(_month),
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    fmtMonth(_month),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
                 ),
                 IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _shiftMonth(1)),
                 PopupMenuButton<String>(
@@ -255,9 +285,27 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                     }
                   },
                   itemBuilder: (_) => [
-                    PopupMenuItem(value: 'shifts', child: ListTile(leading: const Icon(Icons.schedule), title: Text(tr('Ture și ore', 'Shifts and hours')))),
-                    PopupMenuItem(value: 'pdf', child: ListTile(leading: const Icon(Icons.picture_as_pdf_outlined), title: Text(tr('Exportă PDF', 'Export PDF')))),
-                    PopupMenuItem(value: 'csv', child: ListTile(leading: const Icon(Icons.table_chart_outlined), title: Text(tr('Exportă CSV (Excel)', 'Export CSV (Excel)')))),
+                    PopupMenuItem(
+                      value: 'shifts',
+                      child: ListTile(
+                        leading: const Icon(Icons.schedule),
+                        title: Text(tr('Ture și ore', 'Shifts and hours')),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'pdf',
+                      child: ListTile(
+                        leading: const Icon(Icons.picture_as_pdf_outlined),
+                        title: Text(tr('Exportă PDF', 'Export PDF')),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'csv',
+                      child: ListTile(
+                        leading: const Icon(Icons.table_chart_outlined),
+                        title: Text(tr('Exportă CSV (Excel)', 'Export CSV (Excel)')),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -301,8 +349,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : employees.isEmpty
-                  ? Center(child: Text(tr('Adaugă mai întâi angajații.', 'Add the employees first.')))
-                  : _grid(employees),
+              ? Center(child: Text(tr('Adaugă mai întâi angajații.', 'Add the employees first.')))
+              : _grid(employees),
         ),
       ],
     );
@@ -322,13 +370,13 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         height: _cellH,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: date == today ? kAmber.withValues(alpha: 0.5) : (weekend ? Colors.grey.shade200 : null),
+          color: date == today ? kAmber.withValues(alpha: 0.5) : (weekend ? subtleLine(context) : null),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text('$d', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-            Text(wd[date.weekday - 1], style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+            Text(wd[date.weekday - 1], style: TextStyle(fontSize: 10, color: mutedText(context))),
           ],
         ),
       );
@@ -347,37 +395,58 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 children: [
                   SizedBox(width: _nameW, height: _cellH),
                   for (final e in employees)
-                    Container(
-                      width: _nameW,
-                      height: _cellH,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      alignment: Alignment.centerLeft,
-                      decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: Colors.grey.shade300)),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(e.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          () {
-                            // Orele programate față de norma lunii (după concedii).
-                            final sum = _store.monthSummary(e.id, _month);
-                            final diff = sum.planned - sum.target;
-                            return Text(
-                              '${fmtDuration(Duration(minutes: sum.planned))}/${fmtDuration(Duration(minutes: sum.target))} h',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: sum.planned == 0
-                                    ? Colors.grey.shade600
-                                    : diff.abs() <= 60
-                                        ? Colors.green.shade700
-                                        : Colors.orange.shade800,
-                              ),
-                            );
-                          }(),
-                        ],
+                    InkWell(
+                      onTap: () async {
+                        await Navigator.of(
+                          context,
+                        ).push(MaterialPageRoute<void>(builder: (_) => WorkProgramEditor(employeeIds: {e.id})));
+                        if (mounted) setState(() {});
+                      },
+                      child: Container(
+                        width: _nameW,
+                        height: _cellH,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        alignment: Alignment.centerLeft,
+                        decoration: BoxDecoration(
+                          border: Border(top: BorderSide(color: subtleLine(context))),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                            ),
+                            () {
+                              // Orele programate față de norma lunii (după concedii).
+                              final sum = _store.monthSummary(e.id, _month);
+                              final diff = sum.planned - sum.target;
+                              if (_store.programOf(e.id)?.kind == PatternKind.flexible) {
+                                return Text(
+                                  tr(
+                                    'flexibil · ${fmtDuration(Duration(minutes: sum.target))} h',
+                                    'flexible · ${fmtDuration(Duration(minutes: sum.target))} h',
+                                  ),
+                                  style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary),
+                                );
+                              }
+                              return Text(
+                                '${fmtDuration(Duration(minutes: sum.planned))}/${fmtDuration(Duration(minutes: sum.target))} h',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: sum.planned == 0
+                                      ? mutedText(context)
+                                      : diff.abs() <= 60
+                                      ? Colors.green.shade700
+                                      : Colors.orange.shade800,
+                                ),
+                              );
+                            }(),
+                          ],
+                        ),
                       ),
                     ),
                 ],
@@ -392,7 +461,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       for (final e in employees)
                         Container(
                           decoration: BoxDecoration(
-                            border: Border(top: BorderSide(color: Colors.grey.shade300)),
+                            border: Border(top: BorderSide(color: subtleLine(context))),
                           ),
                           child: Row(
                             children: [
@@ -427,22 +496,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               runSpacing: 6,
               children: [
                 for (final s in _store.shifts)
-                  _legend(DayChip(label: s.shortLabel, color: shiftColor(s), width: 28, height: 22),
-                      '${s.name} ${s.hoursLabel}'),
+                  _legend(
+                    DayChip(label: s.shortLabel, color: shiftColor(s), width: 28, height: 22),
+                    '${s.name} ${s.hoursLabel}',
+                  ),
                 for (final c in DayCode.nonShift)
-                  _legend(DayChip(label: DayCode.short(c), color: dayCodeColor(c), width: 28, height: 22),
-                      DayCode.label(c)),
+                  _legend(
+                    DayChip(label: DayCode.short(c), color: dayCodeColor(c), width: 28, height: 22),
+                    DayCode.label(c),
+                  ),
               ],
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: Text(
-              tr('Sub nume: ore programate / norma lunii. Zilele cu chenar negru sunt excepții '
-                  '(puse de tine) și nu se schimbă la generare. Atinge o zi pentru a o modifica.',
-                  'Under each name: scheduled hours / the month\'s norm. Days with a black border are '
-                  'exceptions (set by you) and are kept when generating. Tap a day to change it.'),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              tr(
+                'Sub nume: ore programate / norma lunii. Zilele cu chenar gros sunt excepții '
+                    '(puse de tine) și nu se schimbă la generare. Atinge o zi pentru a o modifica.',
+                'Under each name: scheduled hours / the month\'s norm. Days with a thick border are '
+                    'exceptions (set by you) and are kept when generating. Tap a day to change it.',
+              ),
+              style: TextStyle(fontSize: 12, color: mutedText(context)),
             ),
           ),
         ],
@@ -451,19 +526,17 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Widget _legend(Widget chip, String label) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [chip, const SizedBox(width: 4), Text(label, style: const TextStyle(fontSize: 12))],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      chip,
+      const SizedBox(width: 4),
+      Text(label, style: const TextStyle(fontSize: 12)),
+    ],
+  );
 }
 
 // ─── Excepții: zile libere, concedii, învoiri, pentru unul sau mai mulți ─────
-typedef ExceptionChoice = ({
-  List<Employee> employees,
-  DateTime from,
-  DateTime to,
-  String code,
-  Set<int> weekdays,
-});
+typedef ExceptionChoice = ({List<Employee> employees, DateTime from, DateTime to, String code, Set<int> weekdays});
 
 Future<ExceptionChoice?> showExceptionDialog(BuildContext context, List<Employee> employees, DateTime month) {
   final selected = <String>{};
@@ -485,9 +558,11 @@ Future<ExceptionChoice?> showExceptionDialog(BuildContext context, List<Employee
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                tr('Zile libere, concedii sau învoiri. Rămân neschimbate când generezi graficul.',
-                    'Days off, leave or time off. They stay unchanged when you generate the schedule.'),
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                tr(
+                  'Zile libere, concedii sau învoiri. Rămân neschimbate când generezi graficul.',
+                  'Days off, leave or time off. They stay unchanged when you generate the schedule.',
+                ),
+                style: TextStyle(fontSize: 12, color: mutedText(context)),
               ),
               const SizedBox(height: 10),
               Text(tr('Angajați', 'Employees'), style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -575,12 +650,12 @@ Future<ExceptionChoice?> showExceptionDialog(BuildContext context, List<Employee
               const SizedBox(height: 4),
               Text(
                 tr('${calendarDays(from, to)} zile calendaristice.', '${calendarDays(from, to)} calendar days.'),
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                style: TextStyle(color: mutedText(context), fontSize: 12),
               ),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
-                  child: Text(error!, style: TextStyle(color: Colors.red.shade700)),
+                  child: Text(error!, style: TextStyle(color: toneFg(context, Colors.red))),
                 ),
             ],
           ),

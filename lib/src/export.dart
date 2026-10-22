@@ -181,7 +181,12 @@ pw.Widget _summaryTable(EmployeeReport rep) {
       .join(', ');
   final cells = <List<String>>[
     [tr('Ore lucrate', 'Hours worked'), fmtDuration(Duration(minutes: rep.workedMinutes))],
-    [tr('Ore programate', 'Scheduled hours'), fmtDuration(Duration(minutes: rep.scheduledMinutes))],
+    if (rep.flexible) ...[
+      [tr('Normă (program flexibil)', 'Norm (flexible hours)'), fmtDuration(Duration(minutes: rep.normMinutes!))],
+      [tr('Față de normă', 'Vs. norm'),
+          '${rep.normDiffMinutes > 0 ? '+' : ''}${fmtDuration(Duration(minutes: rep.normDiffMinutes))}'],
+    ] else
+      [tr('Ore programate', 'Scheduled hours'), fmtDuration(Duration(minutes: rep.scheduledMinutes))],
     [tr('Zile prezent', 'Days present'), '${rep.daysPresent}'],
     [tr('Absențe', 'Absences'), '${rep.absences}'],
     [tr('Întârzieri', 'Late arrivals'), '${rep.lateCount} (${fmtDuration(Duration(minutes: rep.lateMinutes))})'],
@@ -260,7 +265,7 @@ Future<File> reportCsv(List<EmployeeReport> reports,
   rows.add([
     tr('Angajat', 'Employee'),
     tr('Ore lucrate', 'Hours worked'),
-    tr('Ore programate', 'Scheduled hours'),
+    tr('Ore programate / normă', 'Scheduled hours / norm'),
     tr('Zile prezent', 'Days present'),
     tr('Absențe', 'Absences'),
     tr('Întârzieri', 'Late arrivals'),
@@ -274,7 +279,7 @@ Future<File> reportCsv(List<EmployeeReport> reports,
     rows.add([
       rep.employee.name,
       fmtDuration(Duration(minutes: rep.workedMinutes)),
-      fmtDuration(Duration(minutes: rep.scheduledMinutes)),
+      fmtDuration(Duration(minutes: rep.flexible ? rep.normMinutes! : rep.scheduledMinutes)),
       '${rep.daysPresent}',
       '${rep.absences}',
       '${rep.lateCount}',

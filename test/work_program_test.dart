@@ -123,7 +123,35 @@ void main() {
     expect(r.anchor, DateTime(2026, 11, 1));
   });
 
+  group('program flexibil', () {
+    test('fără ture: zilele rămân libere de grafic, doar sărbătorile sunt marcate', () {
+      final m = generateMonth(program: _p(PatternKind.flexible), month: _nov, exceptions: const {}, shifts: _shifts);
+      expect(m[DateTime(2026, 11, 2)], DayCode.none);
+      expect(m[DateTime(2026, 11, 30)], DayCode.holiday);
+      expect(plannedMinutes(m.values, _shifts), 0);
+    });
+
+    test('norma pe o perioadă scade concediile', () {
+      String code(DateTime d) => d.day == 3 ? DayCode.vacation : '';
+      expect(periodNormMinutes(DateTime(2026, 11, 2), DateTime(2026, 11, 8), 480, code), 4 * 480);
+    });
+  });
+
   group('în aplicație', () {
+    test('ora de început și durata aleasă devin ture, refolosite la aceleași ore', () async {
+      SharedPreferences.setMockInitialValues({});
+      final s = Store.forTest();
+      await s.load();
+      final a = await s.ensureShift(9 * 60, 8 * 60);
+      expect(s.shiftMap[a]!.hoursLabel, '09:00–17:00');
+      expect(s.shiftMap[a]!.shortLabel, '9-17');
+      expect(await s.ensureShift(9 * 60, 8 * 60), a);
+      expect(await s.ensureShift(8 * 60, 8 * 60), 's1'); // „Normal” 08–16 există deja
+      final night = await s.ensureShift(19 * 60, 12 * 60);
+      expect(s.shiftMap[night]!.durationMinutes, 720);
+      expect(s.shiftMap[night]!.crossesMidnight, isTrue);
+    });
+
     TestWidgetsFlutterBinding.ensureInitialized();
     setUp(() => SharedPreferences.setMockInitialValues({}));
 

@@ -185,6 +185,31 @@ void main() {
     });
   });
 
+  test('program flexibil: orele din pontaj față de normă, fără întârzieri', () {
+    final r = buildEmployeeReport(
+      employee: _emp,
+      punches: [
+        _p('e1', DateTime(2026, 11, 2, 10, 0), _in),
+        _p('e1', DateTime(2026, 11, 2, 20, 0), _out),
+        _p('e1', DateTime(2026, 11, 3, 7, 0), _in),
+        _p('e1', DateTime(2026, 11, 3, 13, 0), _out),
+      ],
+      scheduleCode: (_) => '',
+      shifts: _shifts,
+      from: DateTime(2026, 11, 2),
+      to: DateTime(2026, 11, 3),
+      toleranceMinutes: 5,
+      now: DateTime(2026, 12, 1),
+      flexibleDailyMinutes: 480,
+    );
+    expect(r.flexible, isTrue);
+    expect(r.normMinutes, 16 * 60);
+    expect(r.workedMinutes, 16 * 60);
+    expect(r.normDiffMinutes, 0);
+    expect(r.lateCount, 0);
+    expect(r.absences, 0);
+  });
+
   group('ture', () {
     test('durata turelor care trec de miezul nopții', () {
       expect(_day.durationMinutes, 480);

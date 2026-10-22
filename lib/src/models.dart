@@ -211,6 +211,8 @@ class Shift {
 
   // Codul scurt afișat în celulele graficului.
   String get shortLabel {
+    // Ture create din program (numite după ore, ex. „09–17”): „9-17”.
+    if (RegExp(r'^\d').hasMatch(name.trim())) return '${start ~/ 60}-${(end % 1440) ~/ 60}';
     final words = name.trim().split(RegExp(r'\s+'));
     if (words.length >= 2 && RegExp(r'^\d+h?$').hasMatch(words.last)) {
       return '${words.first[0].toUpperCase()}${words.last.replaceAll('h', '')}';
