@@ -30,15 +30,18 @@ attendance reports. Everything stays on the phone, with no server and no interne
   Night shifts and 24-hour duties are handled.
 - **Attendance per day:** who is in, who has left and who is missing. The manager can add, correct
   or delete clockings, and every correction stays marked as one.
-- **Work schedule generator:**
+- **Work schedule generated with one button:** each employee has a saved work program,
   - fixed hours (chosen weekdays, one shift);
   - rotating shifts (2 or 3 shifts, changing every N days or weekly);
-  - continuous cycles (12/24, 12/48, 24/48, 24/72 or a custom sequence);
-  - staggered start between employees;
-  - days off and leave (annual, sick, unpaid, other);
-  - Romanian public holidays, Orthodox Easter included.
-  
-  The month is shown as a calendar that can be edited day by day, and exported to PDF or CSV.
+  - continuous cycles (12/24, 12/48, 24/48, 24/72 or a custom sequence) that carry on from month to month;
+  - automatic monthly norm: the chosen shifts are spread over the month to cover the legal norm
+    (working days × daily norm, minus leave), with a day off after long or night shifts.
+
+  The manager only marks the exceptions (days off and leave: annual, sick, unpaid, other) for one or
+  more employees, then **Generate schedule** fills in the month for everyone and keeps the
+  exceptions. Romanian public holidays (Orthodox Easter included) are days off unless the program
+  works on holidays. Each employee's scheduled hours are shown against the month's norm. The month
+  can still be edited day by day and is exported to PDF or CSV.
 - **Reports** for any period, for one employee or all of them: hours worked and scheduled, late
   arrivals, early departures, overtime, absences, leave days and incomplete records. Exported as PDF
   or CSV (Excel).

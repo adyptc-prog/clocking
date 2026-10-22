@@ -168,6 +168,8 @@ class DayChip extends StatelessWidget {
   final double width;
   final double height;
   final bool outlined;
+  // Excepție pusă de manager: chenar negru.
+  final bool marked;
 
   const DayChip({
     super.key,
@@ -176,6 +178,7 @@ class DayChip extends StatelessWidget {
     this.width = 34,
     this.height = 30,
     this.outlined = false,
+    this.marked = false,
   });
 
   @override
@@ -186,7 +189,9 @@ class DayChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: Color(color),
           borderRadius: BorderRadius.circular(4),
-          border: outlined ? Border.all(color: Colors.black26) : null,
+          border: marked
+              ? Border.all(color: Colors.black87, width: 2)
+              : (outlined ? Border.all(color: Colors.black26) : null),
         ),
         child: Text(
           label,
@@ -200,14 +205,17 @@ class DayChip extends StatelessWidget {
 }
 
 // Chip-ul unei zile (cod din grafic).
-Widget dayCodeChip(String code, Map<String, Shift> shifts, {double width = 34, double height = 30}) {
+Widget dayCodeChip(String code, Map<String, Shift> shifts,
+    {double width = 34, double height = 30, bool exception = false}) {
   if (DayCode.isShift(code)) {
     final s = shifts[code];
-    if (s == null) return DayChip(label: '?', color: 0xFFFFFFFF, width: width, height: height, outlined: true);
-    return DayChip(label: s.shortLabel, color: shiftColor(s), width: width, height: height);
+    if (s == null) {
+      return DayChip(label: '?', color: 0xFFFFFFFF, width: width, height: height, outlined: true, marked: exception);
+    }
+    return DayChip(label: s.shortLabel, color: shiftColor(s), width: width, height: height, marked: exception);
   }
   if (code.isEmpty) {
     return DayChip(label: '', color: 0xFFFFFFFF, width: width, height: height, outlined: true);
   }
-  return DayChip(label: DayCode.short(code), color: dayCodeColor(code), width: width, height: height);
+  return DayChip(label: DayCode.short(code), color: dayCodeColor(code), width: width, height: height, marked: exception);
 }

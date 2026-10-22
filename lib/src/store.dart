@@ -5,12 +5,15 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
+import 'schedule_gen.dart';
 
 // ─── Stocarea datelor (SharedPreferences, ca restul aplicațiilor) ─────────────
 // Chei:
 //   employees            — lista angajaților (inclusiv cei șterși, ca marcaje)
 //   punches_<AAAA-LL>    — pontajele unei luni
-//   schedule_<AAAA-LL>   — graficul unei luni: {idAngajat: {d: [...], u: ms}}
+//   schedule_<AAAA-LL>   — graficul unei luni: {idAngajat: {d: [...], u: ms}};
+//                          zilele cu „!” sunt excepții puse de manager
+//   programs             — programul de lucru al fiecărui angajat
 //   shifts               — turele: {u: ms, l: [...]}
 //   company_name, late_tolerance_min, duplicate_window_min, settings_updated
 //                        — setări comune, sincronizate cu partenerul
@@ -78,6 +81,7 @@ class Store extends ChangeNotifier {
     lateToleranceMinutes = prefs.getInt('late_tolerance_min') ?? 5;
     duplicateWindowMinutes = prefs.getInt('duplicate_window_min') ?? 2;
     _settingsUpdated = DateTime.fromMillisecondsSinceEpoch(prefs.getInt('settings_updated') ?? 0);
+    _loadPrograms(prefs);
     _pinHash = prefs.getString('manager_pin');
     cameraFront = prefs.getBool('camera_front') ?? false;
     scanSound = prefs.getBool('scan_sound') ?? true;
@@ -364,12 +368,31 @@ class Store extends ChangeNotifier {
     }
   }
 
-  // Codul zilei din grafic (după ensureSchedules pentru luna respectivă).
-  String scheduleCode(String employeeId, DateTime day) {
+  // Zilele puse de manager (concedii, zile libere, schimbări) sunt excepții:
+  // se salvează cu prefixul „!”, iar generatorul nu le atinge.
+  static const _exceptionMark = '!';
+
+  String _rawCode(String employeeId, DateTime day) {
     final entry = _schedules[monthKey(day)]?[employeeId];
     if (entry == null || day.day > entry.days.length) return DayCode.none;
     return entry.days[day.day - 1];
   }
+
+  // Codul zilei din grafic (după ensureSchedules pentru luna respectivă).
+  String scheduleCode(String employeeId, DateTime day) {
+    final raw = _rawCode(employeeId, day);
+    return raw.startsWith(_exceptionMark) ? raw.substring(1) : raw;
+  }
+
+  bool isException(String employeeId, DateTime day) =>
+      _rawCode(employeeId, day).startsWith(_exceptionMark);
+
+  // Excepțiile unei luni (după ensureSchedules), pentru generator.
+  Map<DateTime, String> monthExceptions(String employeeId, DateTime month) => {
+        for (var d = 1; d <= daysInMonth(month); d++)
+          if (isException(employeeId, DateTime(month.year, month.month, d)))
+            DateTime(month.year, month.month, d): scheduleCode(employeeId, DateTime(month.year, month.month, d)),
+      };
 
   Shift? scheduledShift(String employeeId, DateTime day) {
     final code = scheduleCode(employeeId, day);
@@ -377,11 +400,15 @@ class Store extends ChangeNotifier {
   }
 
   // Scrie zilele date în graficul angajatului (luni întregi sincronizate).
-  Future<void> setScheduleDays(String employeeId, Map<DateTime, String> days) async {
+  // [exception]: zilele puse de manager — păstrate la generarea graficului.
+  // O zi golită ('') redevine a generatorului.
+  Future<void> setScheduleDays(String employeeId, Map<DateTime, String> days,
+      {bool exception = true}) async {
     if (days.isEmpty) return;
     final byMonth = <String, Map<int, String>>{};
     for (final e in days.entries) {
-      byMonth.putIfAbsent(monthKey(e.key), () => {})[e.key.day] = e.value;
+      final code = exception && e.value.isNotEmpty ? '$_exceptionMark${e.value}' : e.value;
+      byMonth.putIfAbsent(monthKey(e.key), () => {})[e.key.day] = code;
     }
     final now = DateTime.now();
     for (final m in byMonth.entries) {
@@ -399,6 +426,77 @@ class Store extends ChangeNotifier {
       await _send(SyncCodec.schedule(employeeId, m.key, current, now));
     }
     notifyListeners();
+  }
+
+  // ── Programul de lucru al fiecărui angajat ──────────────────────────────────
+  Map<String, WorkProgram> _programs = {};
+
+  WorkProgram? programOf(String employeeId) => _programs[employeeId];
+
+  Future<void> _savePrograms() async {
+    final prefs = await _p;
+    await prefs.setString('programs', jsonEncode({
+      for (final e in _programs.entries) e.key: e.value.toJson(),
+    }));
+  }
+
+  void _loadPrograms(SharedPreferences prefs) {
+    _programs = {};
+    final raw = prefs.getString('programs');
+    if (raw == null) return;
+    try {
+      final j = jsonDecode(raw) as Map<String, dynamic>;
+      for (final e in j.entries) {
+        _programs[e.key] = WorkProgram.fromJson(e.value as Map<String, dynamic>);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> setProgram(String employeeId, WorkProgram program) async {
+    final p = program.copyWith(updatedAt: DateTime.now());
+    _programs[employeeId] = p;
+    await _savePrograms();
+    notifyListeners();
+    await _send(SyncCodec.program(employeeId, p));
+  }
+
+  // Generează luna pentru angajații dați, după programul fiecăruia. Excepțiile
+  // rămân; întoarce, pe angajat, norma lunii și orele programate.
+  Future<Map<String, ({int target, int planned})>> generateMonthFor(
+      List<Employee> employees, DateTime month) async {
+    await ensureSchedules(month, DateTime(month.year, month.month + 1, 0));
+    final shifts = shiftMap;
+    final norm = employees.where((e) => _programs[e.id]?.kind == PatternKind.norm).toList();
+    final out = <String, ({int target, int planned})>{};
+    for (final e in employees) {
+      final program = _programs[e.id];
+      if (program == null) continue;
+      final exceptions = monthExceptions(e.id, month);
+      final days = generateMonth(
+        program: program,
+        month: month,
+        exceptions: exceptions,
+        shifts: shifts,
+        staggerIndex: norm.indexWhere((x) => x.id == e.id).clamp(0, norm.length),
+        staggerCount: norm.isEmpty ? 1 : norm.length,
+      );
+      await setScheduleDays(e.id, days, exception: false);
+      out[e.id] = monthSummary(e.id, month);
+    }
+    return out;
+  }
+
+  // Norma lunii (după concedii) și orele programate în grafic.
+  ({int target, int planned}) monthSummary(String employeeId, DateTime month) {
+    final daily = _programs[employeeId]?.dailyMinutes ?? 480;
+    final codes = [
+      for (var d = 1; d <= daysInMonth(month); d++)
+        scheduleCode(employeeId, DateTime(month.year, month.month, d)),
+    ];
+    return (
+      target: monthTargetMinutes(month, daily, monthExceptions(employeeId, month)),
+      planned: plannedMinutes(codes, shiftMap),
+    );
   }
 
   // ── Setări ──────────────────────────────────────────────────────────────────
@@ -500,6 +598,16 @@ class Store extends ChangeNotifier {
           await _saveScheduleMonth(key);
           notifyListeners();
           return true;
+        case 'W':
+          final j = jsonDecode(body) as Map<String, dynamic>;
+          final empId = j['e'] as String;
+          final incoming = WorkProgram.fromJson(j['p'] as Map<String, dynamic>);
+          final cur = _programs[empId];
+          if (cur != null && !incoming.updatedAt.isAfter(cur.updatedAt)) return false;
+          _programs[empId] = incoming;
+          await _savePrograms();
+          notifyListeners();
+          return true;
         case 'H':
           final j = jsonDecode(body) as Map<String, dynamic>;
           var changed = false;
@@ -549,6 +657,7 @@ class Store extends ChangeNotifier {
       SyncCodec.settings(this),
       SyncCodec.shifts(_shifts, _shiftsUpdated),
       for (final e in _employees) SyncCodec.employee(e),
+      for (final e in _programs.entries) SyncCodec.program(e.key, e.value),
     ];
     for (final m in [DateTime(now.year, now.month), DateTime(now.year, now.month + 1)]) {
       final key = monthKey(m);
@@ -574,6 +683,7 @@ class Store extends ChangeNotifier {
 // ─── Formatul mesajelor de sincronizare ───────────────────────────────────────
 //   CLK:E:{angajat}   CLK:P:{pontaj}   CLK:B:[pontaje]
 //   CLK:G:{e: angajat, m: AAAA-LL, d: "s1,s1,L,...", u: ms}  — graficul unei luni
+//   CLK:W:{e: angajat, p: program}  — programul de lucru al angajatului
 //   CLK:H:{ture și/sau setări}        CLK:Z:  — sfârșitul sincronizării inițiale
 // (CLK:L: / CLK:R: — licența — și semnătura CLK:S: sunt tratate nativ.)
 class SyncCodec {
@@ -592,6 +702,8 @@ class SyncCodec {
       'CLK:B:${jsonEncode(ps.map((p) => p.toJson()).toList())}';
   static String schedule(String employeeId, String month, List<String> days, DateTime updatedAt) =>
       'CLK:G:${jsonEncode({'e': employeeId, 'm': month, 'd': days.join(','), 'u': updatedAt.millisecondsSinceEpoch})}';
+  static String program(String employeeId, WorkProgram p) =>
+      'CLK:W:${jsonEncode({'e': employeeId, 'p': p.toJson()})}';
   static String shifts(List<Shift> shifts, DateTime updatedAt) =>
       'CLK:H:${jsonEncode({'u': updatedAt.millisecondsSinceEpoch, 'l': shifts.map((s) => s.toJson()).toList()})}';
   static String settings(Store s) => 'CLK:H:${jsonEncode({
