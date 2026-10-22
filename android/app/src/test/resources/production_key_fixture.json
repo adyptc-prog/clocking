@@ -1,0 +1,14 @@
+{
+  "note": "Licență EXPIRATĂ (ianuarie 2026), semnată cu cheia de producție prin lib/licenseSigner.js — doar pentru testul de compatibilitate site ↔ aplicație.",
+  "license": {
+    "payload": {
+      "licenseId": "00000000-0000-4000-8000-000000000001",
+      "businessId": "clocking-1700000000000",
+      "stickId": "",
+      "issuedAt": "2026-01-01T00:00:00Z",
+      "isLifetime": false,
+      "validUntil": "2026-02-01T00:00:00Z"
+    },
+    "signature": "d3jlAt4LbFxeBJO+8uMBlyuISYFbHgrFbtWlkVZSf8KiGP5c50dxAkRXD9fbFrUUDPsaKvYBDsgAqo8UufAxjlBm9ZBepgObYowHA/X3cnnsRtePxHyXkUgVzYNBRRr2451yX5IwQwJIXnY+pfWwF1G87Ex7AVO4bG1M5Mo4GD0brEKK0jQNXNVmxXcFm97bsS7PVqO/FH8BHekPDIosYzoRTCytvV0EUly88LZyCBYP9xNu1ulc553LV8aHul93JgOz9wIw6G03YfeYMwcTzjNBj3z1B8whRdXd8Q/J1e40XadGwAu/c7sfqm193mEDWouzGpGwiS3LcmBHzd6MpQ=="
+  }
+}
