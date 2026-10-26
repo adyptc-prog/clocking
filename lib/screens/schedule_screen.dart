@@ -174,6 +174,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                         ),
                       )
                     : _summaryTile(e.name, summary[e.id]!),
+              if (_store.lastCoverageGaps.isNotEmpty) _gapsNote(_store.lastCoverageGaps),
               if (missing.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -189,6 +190,36 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           ),
         ),
         actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('OK', 'OK')))],
+      ),
+    );
+  }
+
+  // Zilele în care echipa n-a avut destui oameni pentru minimul cerut.
+  Widget _gapsNote(List<CoverageGap> gaps) {
+    final shifts = _store.shiftMap;
+    final lines = [
+      for (final g in gaps.take(10))
+        '${fmtDate(g.day)} · ${shifts[g.shiftId]?.name ?? '?'} ${shifts[g.shiftId]?.hoursLabel ?? ''}: '
+            '${tr('lipsesc ${g.missing}', '${g.missing} missing')}',
+      if (gaps.length > 10) tr('… și încă ${gaps.length - 10}', '… and ${gaps.length - 10} more'),
+    ];
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: tintBg(context, Colors.orange), borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tr('Minimul pe ture n-a putut fi acoperit (prea puțini angajați disponibili, din cauza concediilor '
+                'sau a odihnei după ture). Completează de mână zilele de mai jos:',
+                'The shift minimum could not be covered (too few employees available because of leave or the '
+                'rest after shifts). Fill in these days by hand:'),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: toneFg(context, Colors.orange)),
+          ),
+          const SizedBox(height: 4),
+          for (final l in lines) Text(l, style: const TextStyle(fontSize: 12)),
+        ],
       ),
     );
   }

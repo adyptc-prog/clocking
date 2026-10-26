@@ -33,6 +33,10 @@ attendance reports. Everything stays on the phone, with no server and no interne
 - **Work schedule generated with one button:** each employee has a saved work program,
   - fixed hours (chosen weekdays, one shift);
   - rotating shifts (2 or 3 shifts, changing every N days or weekly);
+  - a shift team with a coverage rule: at least N employees on each shift every day (for example at
+    least one nurse from 8:00 and the rest from 11:00, or one receptionist on the day shift and one on
+    the night shift). The team is shared out day by day in rotation, with 24h off after a 12h shift,
+    and days off follow the norm and the leave. Days the minimum can't be covered are listed;
   - continuous cycles (12/24, 12/48, 24/48, 24/72 or a custom sequence) that carry on from month to month;
   - automatic monthly norm: the chosen shifts are spread over the month to cover the legal norm
     (working days × daily norm, minus leave), with a day off after long or night shifts.

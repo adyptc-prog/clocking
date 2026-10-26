@@ -479,17 +479,52 @@ class Store extends ChangeNotifier {
     await _send(SyncCodec.program(employeeId, p));
   }
 
+  // Zilele în care ultima generare n-a putut acoperi minimul unei echipe.
+  List<CoverageGap> lastCoverageGaps = const [];
+
+  // Angajații cu același program de echipă (ture cu acoperire minimă).
+  List<Employee> teamOf(String team) =>
+      activeEmployees.where((e) => _programs[e.id]?.isTeam == true && _programs[e.id]!.team == team).toList();
+
   // Generează luna pentru angajații dați, după programul fiecăruia. Excepțiile
   // rămân; întoarce, pe angajat, norma lunii și orele programate.
   Future<Map<String, ({int target, int planned})>> generateMonthFor(
       List<Employee> employees, DateTime month) async {
-    await ensureSchedules(month, DateTime(month.year, month.month + 1, 0));
+    final prevDay = DateTime(month.year, month.month, 0);
+    await ensureSchedules(prevDay, DateTime(month.year, month.month + 1, 0));
     final shifts = shiftMap;
     final norm = employees.where((e) => _programs[e.id]?.kind == PatternKind.norm).toList();
     final out = <String, ({int target, int planned})>{};
+    final gaps = <CoverageGap>[];
+
+    // Echipele: toți membrii se generează împreună.
+    final teams = <String, List<Employee>>{};
+    for (final e in employees) {
+      final p = _programs[e.id];
+      if (p != null && p.isTeam) (teams[p.team] ??= []).add(e);
+    }
+    for (final members in teams.values) {
+      final result = generateTeamMonth(
+        rule: _programs[members.first.id]!,
+        members: [for (final e in members) e.id],
+        month: month,
+        exceptions: {for (final e in members) e.id: monthExceptions(e.id, month)},
+        dailyMinutes: {for (final e in members) e.id: _programs[e.id]!.dailyMinutes},
+        shifts: shifts,
+        previousDay: {for (final e in members) e.id: scheduleCode(e.id, prevDay)},
+      );
+      gaps.addAll(result.gaps);
+      for (final e in members) {
+        await setScheduleDays(e.id, result.days[e.id]!, exception: false);
+        out[e.id] = monthSummary(e.id, month);
+      }
+    }
+    gaps.sort((a, b) => a.day.compareTo(b.day));
+    lastCoverageGaps = gaps;
+
     for (final e in employees) {
       final program = _programs[e.id];
-      if (program == null) continue;
+      if (program == null || program.isTeam) continue;
       final exceptions = monthExceptions(e.id, month);
       final days = generateMonth(
         program: program,

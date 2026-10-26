@@ -210,6 +210,12 @@ class WorkProgram {
   final int dailyMinutes;
   // Lucrează și în sărbătorile legale (servicii continue). Altfel ziua e SL.
   final bool workHolidays;
+  // rotating cu condiție de acoperire: angajații cu același [team] sunt
+  // împărțiți împreună pe ture, cu cel puțin [minStaff][i] oameni pe tura i
+  // în fiecare zi; ceilalți merg pe tura [restTo] (-1 = împărțiți între ture).
+  final String team;
+  final List<int> minStaff;
+  final int restTo;
   final DateTime updatedAt;
 
   const WorkProgram({
@@ -223,10 +229,15 @@ class WorkProgram {
     required this.anchor,
     this.dailyMinutes = 8 * 60,
     this.workHolidays = false,
+    this.team = '',
+    this.minStaff = const [],
+    this.restTo = -1,
     required this.updatedAt,
   });
 
-  WorkProgram copyWith({DateTime? anchor, int? rotationOffset, DateTime? updatedAt}) => WorkProgram(
+  bool get isTeam => kind == PatternKind.rotating && team.isNotEmpty && minStaff.length == shifts.length;
+
+  WorkProgram copyWith({DateTime? anchor, int? rotationOffset, String? team, DateTime? updatedAt}) => WorkProgram(
         kind: kind,
         weekdays: weekdays,
         shiftId: shiftId,
@@ -237,6 +248,9 @@ class WorkProgram {
         anchor: anchor ?? this.anchor,
         dailyMinutes: dailyMinutes,
         workHolidays: workHolidays,
+        team: team ?? this.team,
+        minStaff: minStaff,
+        restTo: restTo,
         updatedAt: updatedAt ?? this.updatedAt,
       );
 
@@ -251,6 +265,9 @@ class WorkProgram {
         'a': '${monthKey(anchor)}-${anchor.day.toString().padLeft(2, '0')}',
         'm': dailyMinutes,
         if (workHolidays) 'h': 1,
+        if (team.isNotEmpty) 't': team,
+        if (minStaff.isNotEmpty) 'n': minStaff,
+        if (team.isNotEmpty) 'x': restTo,
         'u': updatedAt.millisecondsSinceEpoch,
       };
 
@@ -267,6 +284,9 @@ class WorkProgram {
       anchor: DateTime(a[0], a[1], a[2]),
       dailyMinutes: (j['m'] as num?)?.toInt() ?? 480,
       workHolidays: j['h'] == 1,
+      team: (j['t'] as String?) ?? '',
+      minStaff: ((j['n'] as List?) ?? const []).map((e) => (e as num).toInt()).toList(),
+      restTo: (j['x'] as num?)?.toInt() ?? -1,
       updatedAt: DateTime.fromMillisecondsSinceEpoch((j['u'] as num?)?.toInt() ?? 0),
     );
   }
@@ -278,6 +298,13 @@ class WorkProgram {
     final days = (weekdays.toList()..sort()).map((d) => wd[d - 1]).join(' ');
     final hours = dailyMinutes == 480 ? '' : ' · ${tr('normă', 'norm')} ${dailyMinutes ~/ 60}h/${tr('zi', 'day')}';
     final fixed = shiftMap[shiftId];
+    if (isTeam) {
+      final parts = [
+        for (var i = 0; i < shifts.length; i++)
+          '${name(shifts[i])} ${tr('min', 'min')} ${minStaff[i]}${restTo == i ? ' + ${tr('restul', 'the rest')}' : ''}',
+      ];
+      return '${tr('Echipă pe ture', 'Shift team')}: ${parts.join(' · ')} · $days$hours';
+    }
     return switch (kind) {
       PatternKind.fixed => '${tr('Fix', 'Fixed')}: ${fixed?.name ?? '?'} ${fixed?.hoursLabel ?? ''} · $days$hours',
       PatternKind.rotating => '${tr('Ture rotative', 'Rotating')}: ${shifts.map(name).join(' → ')} · $days$hours',
@@ -440,4 +467,199 @@ Map<DateTime, String> generateMonth({
     out[d] = chosen[d] ?? DayCode.off;
   }
   return out;
+}
+
+// ─── Echipă pe ture cu acoperire minimă ───────────────────────────────────────
+// Angajații unei echipe sunt împărțiți împreună pe ture, zi de zi: întâi se
+// acoperă minimul cerut pe fiecare tură, apoi restul merg pe tura aleasă cât
+// timp mai au ore până la normă. Cine nu lucrează are liber, deci zilele libere
+// ies din normă și din concedii.
+class CoverageGap {
+  final DateTime day;
+  final String shiftId;
+  final int missing;
+  const CoverageGap(this.day, this.shiftId, this.missing);
+}
+
+class TeamMonth {
+  // Pe angajat: codurile zilelor fără excepții.
+  final Map<String, Map<DateTime, String>> days;
+  // Zilele în care nu s-a putut acoperi minimul (prea puțini oameni disponibili).
+  final List<CoverageGap> gaps;
+  const TeamMonth(this.days, this.gaps);
+}
+
+// Odihna minimă după o tură: 12h; după o tură de 12h, 24h; după o gardă de 24h, 48h.
+Duration restAfter(Shift s) => Duration(
+    hours: s.durationMinutes >= 24 * 60
+        ? 48
+        : s.durationMinutes >= 12 * 60
+            ? 24
+            : 12);
+
+DateTime _startOf(DateTime d, Shift s) => DateTime(d.year, d.month, d.day, 0, s.start);
+
+DateTime _endOf(DateTime d, Shift s) => _startOf(d, s).add(Duration(minutes: s.durationMinutes));
+
+// Peste câte zile lucrate la rând un angajat e scos din tură dacă se poate.
+const _maxConsecutive = 6;
+
+TeamMonth generateTeamMonth({
+  required WorkProgram rule,
+  required List<String> members,
+  required DateTime month,
+  required Map<String, Map<DateTime, String>> exceptions,
+  required Map<String, int> dailyMinutes,
+  required Map<String, Shift> shifts,
+  // Codul ultimei zile din luna trecută, pentru odihna de la început de lună.
+  Map<String, String> previousDay = const {},
+}) {
+  final holidays = romanianHolidays(month.year);
+  final n = rule.shifts.length;
+  final used = [for (final id in rule.shifts) shifts[id]];
+  final out = {for (final m in members) m: <DateTime, String>{}};
+  final gaps = <CoverageGap>[];
+  final days = [
+    for (var d = 1; d <= daysInMonth(month); d++) DateTime(month.year, month.month, d),
+  ];
+  bool holidayOff(DateTime d) => holidays.contains(d) && !rule.workHolidays;
+  bool active(DateTime d) => rule.weekdays.contains(d.weekday) && !holidayOff(d);
+  String? exc(String m, DateTime d) => exceptions[m]?[d];
+
+  final lastEnd = <String, DateTime>{};
+  final lastRest = <String, Duration>{};
+  final planned = {for (final m in members) m: 0};
+  final consecutive = {for (final m in members) m: 0};
+  final onShift = {for (final m in members) m: List.filled(n, 0)};
+  final target = {
+    for (final m in members) m: monthTargetMinutes(month, dailyMinutes[m] ?? 480, exceptions[m] ?? const {}),
+  };
+  // Ritmul normei: după a k-a zi disponibilă din cele N, angajatul ar trebui
+  // să aibă k/N din normă.
+  final availTotal = {
+    for (final m in members) m: days.where((d) => active(d) && exc(m, d) == null).length,
+  };
+  final availSeen = {for (final m in members) m: 0};
+  double pace(String m) => availTotal[m] == 0 ? 0 : target[m]! * availSeen[m]! / availTotal[m]!;
+  double ahead(String m) => planned[m]! - pace(m);
+
+  void work(String m, DateTime d, Shift s) {
+    planned[m] = planned[m]! + s.durationMinutes;
+    lastEnd[m] = _endOf(d, s);
+    lastRest[m] = restAfter(s);
+  }
+
+  bool canTake(String m, DateTime d, Shift s) {
+    final e = lastEnd[m];
+    return e == null || !_startOf(d, s).isBefore(e.add(lastRest[m]!));
+  }
+
+  final prev = DateTime(month.year, month.month, 0);
+  for (final m in members) {
+    final s = shifts[previousDay[m] ?? ''];
+    if (s == null) continue;
+    lastEnd[m] = _endOf(prev, s);
+    lastRest[m] = restAfter(s);
+    consecutive[m] = 1;
+  }
+
+  for (final d in days) {
+    final counts = List.filled(n, 0);
+    final worked = <String>{};
+    // Turele puse de mână (excepții) contează la acoperire.
+    for (final m in members) {
+      final s = shifts[exc(m, d) ?? ''];
+      if (s == null) continue;
+      final i = rule.shifts.indexOf(s.id);
+      if (i >= 0) {
+        counts[i]++;
+        onShift[m]![i]++;
+      }
+      work(m, d, s);
+      worked.add(m);
+    }
+
+    final free = members.where((m) => exc(m, d) == null).toList();
+    if (!active(d)) {
+      for (final m in free) {
+        out[m]![d] = holidayOff(d) ? DayCode.holiday : DayCode.off;
+      }
+    } else {
+      for (final m in free) {
+        availSeen[m] = availSeen[m]! + 1;
+      }
+      final pool = Set.of(free);
+      final assigned = <String, int>{};
+      void assign(String m, int i) {
+        assigned[m] = i;
+        pool.remove(m);
+        counts[i]++;
+        onShift[m]![i]++;
+        work(m, d, used[i]!);
+        worked.add(m);
+      }
+
+      // 1. Minimul pe fiecare tură; întâi tura cu cei mai puțini oameni care o pot lua.
+      final blocked = <int>{};
+      while (true) {
+        final need = [
+          for (var i = 0; i < n; i++)
+            if (used[i] != null && !blocked.contains(i) && counts[i] < rule.minStaff[i]) i,
+        ];
+        if (need.isEmpty) break;
+        List<String> candidates(int i) => pool.where((m) => canTake(m, d, used[i]!)).toList();
+        need.sort((a, b) => candidates(a).length.compareTo(candidates(b).length));
+        final i = need.first;
+        final c = candidates(i);
+        if (c.isEmpty) {
+          gaps.add(CoverageGap(d, rule.shifts[i], rule.minStaff[i] - counts[i]));
+          blocked.add(i);
+          continue;
+        }
+        int alternatives(String m) => need.where((j) => j != i && canTake(m, d, used[j]!)).length;
+        int tired(String m) => consecutive[m]! >= _maxConsecutive ? 1 : 0;
+        c.sort((a, b) {
+          var r = tired(a).compareTo(tired(b));
+          if (r == 0) r = ahead(a).round().compareTo(ahead(b).round());
+          if (r == 0) r = alternatives(a).compareTo(alternatives(b));
+          if (r == 0) r = onShift[a]![i].compareTo(onShift[b]![i]);
+          if (r == 0) r = members.indexOf(a).compareTo(members.indexOf(b));
+          return r;
+        });
+        assign(c.first, i);
+      }
+
+      // 2. Restul: pe tura aleasă (sau unde sunt cei mai puțini), doar cât le
+      // mai trebuie ore ca să țină ritmul normei.
+      final rest = pool.toList()..sort((a, b) => ahead(a).compareTo(ahead(b)));
+      for (final m in rest) {
+        if (consecutive[m]! >= _maxConsecutive) continue;
+        final options = [
+          for (var i = 0; i < n; i++)
+            if (used[i] != null && canTake(m, d, used[i]!)) i,
+        ];
+        if (options.isEmpty) continue;
+        int? pick;
+        if (rule.restTo >= 0 && options.contains(rule.restTo)) {
+          pick = rule.restTo;
+        } else {
+          options.sort((a, b) {
+            final r = counts[a].compareTo(counts[b]);
+            return r != 0 ? r : onShift[m]![a].compareTo(onShift[m]![b]);
+          });
+          pick = options.first;
+        }
+        if (planned[m]! + used[pick]!.durationMinutes > pace(m) + 1) continue;
+        assign(m, pick);
+      }
+
+      for (final m in free) {
+        out[m]![d] = assigned.containsKey(m) ? rule.shifts[assigned[m]!] : DayCode.off;
+      }
+    }
+    for (final m in members) {
+      consecutive[m] = worked.contains(m) ? consecutive[m]! + 1 : 0;
+    }
+  }
+  return TeamMonth(out, gaps);
 }

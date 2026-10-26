@@ -98,6 +98,12 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
   int _dailyHours = 8;
   bool _workHolidays = false;
   bool _stagger = true;
+  // Condiția de acoperire: câți angajați cel puțin pe fiecare tură, și unde
+  // merg ceilalți (-1 = împărțiți între ture).
+  bool _team = false;
+  final List<int> _minStaff = [1, 1, 1];
+  int _restTo = -1;
+  String _teamId = '';
 
   @override
   void initState() {
@@ -135,6 +141,16 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
             _slots[i] = slots[i];
           }
           _rotateEvery = existing.rotateEveryDays;
+          if (existing.isTeam) {
+            // Echipa se editează întreagă: toți membrii rămân selectați.
+            _team = true;
+            _teamId = existing.team;
+            _restTo = existing.restTo;
+            for (var i = 0; i < existing.minStaff.length && i < 3; i++) {
+              _minStaff[i] = existing.minStaff[i];
+            }
+            _selected = _store.teamOf(existing.team).map((e) => e.id).toSet()..addAll(widget.employeeIds);
+          }
         case PatternKind.cycle:
           _cycle = List.of(existing.cycle);
           _preset = null;
@@ -158,6 +174,13 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
       case PatternKind.fixed:
       case PatternKind.rotating:
         if (_weekdays.isEmpty) return tr('Alege zilele lucrătoare.', 'Choose the working days.');
+        if (_kind == PatternKind.rotating && _team) {
+          final min = _minStaff.take(_rotationCount).fold(0, (a, b) => a + b);
+          if (min > _selected.length) {
+            return tr('Minimul cerut pe ture ($min) e mai mare decât numărul de angajați aleși (${_selected.length}).',
+                'The minimum asked on the shifts ($min) is more than the employees chosen (${_selected.length}).');
+          }
+        }
       case PatternKind.cycle:
         if (!_cycle.any(DayCode.isShift)) {
           return tr('Ciclul trebuie să conțină cel puțin o tură.', 'The cycle must contain at least one shift.');
@@ -184,6 +207,9 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
       if (_kind == PatternKind.rotating)
         for (final slot in _slots.take(_rotationCount)) await _store.ensureShift(slot.$1, slot.$2),
     ];
+    final team = _kind == PatternKind.rotating && _team
+        ? (_teamId.isNotEmpty ? _teamId : 'T${DateTime.now().millisecondsSinceEpoch}')
+        : '';
     final base = WorkProgram(
       kind: _kind,
       weekdays: Set.of(_weekdays),
@@ -198,8 +224,17 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
       anchor: _anchor,
       dailyMinutes: _dailyHours * 60,
       workHolidays: _workHolidays,
+      team: team,
+      minStaff: team.isEmpty ? const [] : _minStaff.take(_rotationCount).toList(),
+      restTo: _restTo < _rotationCount ? _restTo : -1,
       updatedAt: DateTime.now(),
     );
+    // Cine a fost scos din echipă rămâne cu turele lui, dar fără condiție.
+    if (_teamId.isNotEmpty) {
+      for (final e in _store.teamOf(_teamId)) {
+        if (!_selected.contains(e.id)) await _store.setProgram(e.id, _store.programOf(e.id)!.copyWith(team: ''));
+      }
+    }
     for (var i = 0; i < employees.length; i++) {
       final stagger = _stagger && employees.length > 1 ? i : 0;
       final p = switch (_kind) {
@@ -215,6 +250,92 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
     showSnack(context, tr('Program salvat pentru ${employees.length} angajați. Generează graficul din „Grafic”.',
         'Program saved for ${employees.length} ${employees.length == 1 ? 'employee' : 'employees'}. Generate the schedule in “Schedule”.'));
     Navigator.pop(context, true);
+  }
+
+  // Condiția de acoperire a turelor: minimul de oameni pe fiecare tură și unde
+  // merg ceilalți. Angajații aleși formează o echipă generată împreună.
+  Widget _coverageCard() {
+    final scheme = Theme.of(context).colorScheme;
+    String slotName(int i) {
+      final (start, length) = _slots[i];
+      return '${tr('Tura', 'Shift')} ${i + 1} (${fmtMinutes(start)}–${fmtMinutes((start + length) % (24 * 60))})';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _team ? scheme.primary : subtleLine(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile(
+            title: Text(tr('Condiție de acoperire', 'Coverage rule'), style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(tr('Câți angajați să fie cel puțin pe fiecare tură, în fiecare zi.',
+                'How many employees at least on each shift, every day.')),
+            value: _team,
+            onChanged: (v) => setState(() => _team = v),
+          ),
+          if (_team)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < _rotationCount; i++)
+                    Row(
+                      children: [
+                        Expanded(child: Text(slotName(i), style: const TextStyle(fontSize: 13))),
+                        Text(tr('minim', 'at least'), style: TextStyle(fontSize: 12, color: mutedText(context))),
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline),
+                          onPressed: _minStaff[i] > 0 ? () => setState(() => _minStaff[i]--) : null,
+                        ),
+                        SizedBox(
+                          width: 22,
+                          child: Text('${_minStaff[i]}',
+                              textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _minStaff[i] < 20 ? () => setState(() => _minStaff[i]++) : null,
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    initialValue: _restTo < _rotationCount ? _restTo : -1,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: tr('Restul angajaților', 'The other employees'),
+                      helperText: tr('Doar cât le mai trebuie ore până la normă; altfel au liber.',
+                          'Only while they still need hours to reach the norm; otherwise they are off.'),
+                      helperMaxLines: 2,
+                    ),
+                    items: [
+                      DropdownMenuItem(value: -1, child: Text(tr('Împărțiți între ture', 'Shared between the shifts'))),
+                      for (var i = 0; i < _rotationCount; i++)
+                        DropdownMenuItem(value: i, child: Text('${tr('Pe', 'On')} ${slotName(i)}')),
+                    ],
+                    onChanged: (v) => setState(() => _restTo = v ?? -1),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    tr('Generatorul împarte angajații aleși zi de zi: întâi pune minimul pe fiecare tură, '
+                        'prin rotație, apoi pe ceilalți. Zilele libere se dau după normă și concedii. '
+                        'După o tură de 12h urmează 24h libere, iar după o gardă de 24h, 48h.',
+                        'The generator shares the chosen employees out day by day: first the minimum on each '
+                        'shift, in rotation, then the others. Days off follow the norm and the leave. '
+                        'A 12h shift is followed by 24h off, and a 24h duty by 48h.'),
+                    style: TextStyle(fontSize: 12, color: mutedText(context)),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -383,7 +504,9 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
                   for (var i = 0; i < _rotationCount; i++)
                     hoursPicker(tr('Tura ${i + 1} din rotație', 'Rotation shift ${i + 1}'), _slots[i].$1, _slots[i].$2,
                         (s, l) => setState(() => _slots[i] = (s, l))),
-                  DropdownButtonFormField<int>(
+                  _coverageCard(),
+                  const SizedBox(height: 10),
+                  if (!_team) DropdownButtonFormField<int>(
                     initialValue: _rotateEvery,
                     decoration: InputDecoration(labelText: tr('Schimbarea turei', 'Shift change'), border: const OutlineInputBorder()),
                     items: [
@@ -401,8 +524,10 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
                   ),
                   const SizedBox(height: 10),
                   weekdayPicker(),
-                  const SizedBox(height: 10),
-                  anchorPicker(tr('Rotația începe din', 'Rotation starts on')),
+                  if (!_team) ...[
+                    const SizedBox(height: 10),
+                    anchorPicker(tr('Rotația începe din', 'Rotation starts on')),
+                  ],
                 ],
               PatternKind.cycle => [
                   hint(tr('Ciclu continuu, inclusiv în weekend. Continuă singur de la o lună la alta.',
@@ -504,7 +629,8 @@ class _WorkProgramEditorState extends State<WorkProgramEditor> {
                       'norm, minus leave). No late arrivals are computed.')),
                 ],
             },
-            if (_kind != PatternKind.fixed && _kind != PatternKind.norm && _selected.length > 1)
+            if (_kind != PatternKind.fixed && _kind != PatternKind.norm && !(_kind == PatternKind.rotating && _team) &&
+                _selected.length > 1)
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(tr('Decalează angajații', 'Stagger the employees')),
